@@ -2841,12 +2841,12 @@
                                 </div>
                                 <span className="text-[9px] font-usarmy" style={{color:'#d4af37'}}>OFICINA</span>
                             </div>
-                            <p className="font-usarmy text-base mb-1" style={{color: totalSummary.wBalancePaid>=0?'#d4af37':'#f87171'}}>
-                                {money(totalSummary.wBalancePaid)}
+                            <p className="font-usarmy text-base mb-1" style={{color: totalSummary.wBalance>=0?'#d4af37':'#f87171'}}>
+                                {money(totalSummary.wBalance)}
                             </p>
                             <div className="flex justify-between text-[8px] font-mono text-gray-500">
-                                <span className="text-green-400">↑ {money(totalSummary.wPaidIncome)}</span>
-                                <span className="text-red-400">↓ {money(totalSummary.wPaidExpense)}</span>
+                                <span className="text-green-400">↑ {money(totalSummary.wIncome)}</span>
+                                <span className="text-red-400">↓ {money(totalSummary.wExpense)}</span>
                             </div>
                         </div>
                     </div>
