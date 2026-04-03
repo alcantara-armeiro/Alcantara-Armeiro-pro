@@ -426,6 +426,34 @@
         }
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
 
+        .glow-title {
+            position: relative;
+            overflow: hidden;
+        }
+        .glow-title::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 60%;
+            height: 100%;
+            background: linear-gradient(120deg, transparent, rgba(212,175,55,0.55), transparent);
+            animation: glowMove 2.6s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes glowMove {
+            0% { left: -100%; }
+            100% { left: 150%; }
+        }
+
+        .dashboard-soft-glow {
+            box-shadow: 0 0 0 rgba(212,175,55,0);
+        }
+        .dashboard-soft-glow:hover,
+        .dashboard-soft-glow:active {
+            box-shadow: 0 0 10px rgba(212,175,55,0.10), 0 0 18px rgba(212,175,55,0.06);
+        }
+
     </style>
 </head>
 
@@ -999,6 +1027,94 @@
             const discount = calculateDiscount(order);
             return Math.max(0, subtotal - discount);
         };
+
+        const CUSTOMER_NOTES_KEY = 'alcantara_customer_notes';
+
+        const normalizeCustomerKey = (value) => String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toUpperCase();
+
+        const parsePtBrDate = (value) => {
+            const raw = String(value || '').trim();
+            const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (!match) return 0;
+            const [, day, month, year] = match;
+            return new Date(`${year}-${month}-${day}T12:00:00`).getTime() || 0;
+        };
+
+        const getCustomerNotesMap = () => {
+            const raw = safeJsonParse(localStorage.getItem(CUSTOMER_NOTES_KEY), {});
+            return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+        };
+
+        const saveCustomerNote = (customerName, note) => {
+            const key = normalizeCustomerKey(customerName);
+            if (!key) return;
+            const notesMap = getCustomerNotesMap();
+            const cleaned = String(note || '').trim();
+            if (cleaned) notesMap[key] = cleaned;
+            else delete notesMap[key];
+            localStorage.setItem(CUSTOMER_NOTES_KEY, JSON.stringify(notesMap));
+        };
+
+        const getCustomerHistorySnapshot = (orders, customerName, currentOrderId = null) => {
+            const key = normalizeCustomerKey(customerName);
+            const notesMap = getCustomerNotesMap();
+            const emptyState = {
+                hasHistory: false,
+                totalOrders: 0,
+                pendingOrders: 0,
+                averageTicket: 0,
+                totalPaid: 0,
+                lastEquipment: '',
+                lastDefect: '',
+                lastOrderLabel: '',
+                internalNote: notesMap[key] || '',
+                lastOrders: []
+            };
+
+            if (!key) return emptyState;
+
+            const relatedOrders = asArray(orders)
+                .filter(order => order && order.id !== currentOrderId && normalizeCustomerKey(order.customerName) === key)
+                .sort((a, b) => {
+                    const diff = parsePtBrDate(b.date) - parsePtBrDate(a.date);
+                    if (diff !== 0) return diff;
+                    const osA = parseInt(String(a.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    const osB = parseInt(String(b.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    return osB - osA;
+                });
+
+            if (!relatedOrders.length) return emptyState;
+
+            const totalPaid = relatedOrders.reduce((sum, order) => (
+                order.paymentStatus === 'PAGO' ? sum + calculateTotal(order) : sum
+            ), 0);
+
+            const averageTicket = relatedOrders.reduce((sum, order) => sum + calculateTotal(order), 0) / relatedOrders.length;
+            const pendingOrders = relatedOrders.filter(order => {
+                const stage = normalizeOperationalStatus(order.operationalStatus || 'ENTRADA');
+                return order.status !== 'CANCELADA' && stage !== 'ENTREGUE';
+            }).length;
+
+            const latest = relatedOrders[0];
+
+            return {
+                hasHistory: true,
+                totalOrders: relatedOrders.length,
+                pendingOrders,
+                averageTicket,
+                totalPaid,
+                lastEquipment: latest?.equipment || '',
+                lastDefect: latest?.defects || '',
+                lastOrderLabel: latest ? `OS #${latest.osNumber || '-'} • ${latest.date || '-'}` : '',
+                internalNote: notesMap[key] || '',
+                lastOrders: relatedOrders.slice(0, 3)
+            };
+        };
+
 
         // ========== GERADOR DE PDF - ORDEM DE SERVIÇO ==========
         const generateOrderPDF = async (order) => {
@@ -5847,9 +5963,13 @@
                         <span className="text-[9px] font-usarmy text-[#d4af37]">UNIDADE SP</span>
                     </div>
 
+                    <p className="text-[10px] font-usarmy text-[#d4af37] mb-3 border-b border-white/5 pb-2 tracking-[1px] text-center glow-title w-full">
+                        CENTRO TÁTICO INTELIGENTE
+                    </p>
+
                     <div className="grid grid-cols-2 gap-3 w-full">
                         {dashboardButtons.map(item => (
-                            <button key={item.label} onClick={item.onClick} className={`${item.cardClass} min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}>
+                            <button key={item.label} onClick={item.onClick} className={`${item.cardClass} dashboard-soft-glow min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}>
                                 <div className="flex items-center justify-center mb-2">
                                     <i data-lucide={item.icon} className={`w-8 h-8 ${item.textClass}`}></i>
                                 </div>
@@ -6901,6 +7021,7 @@
             const [temp, setTemp] = useState({ name: '', quantity: '', price: '' });
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
+            const [customerInternalNote, setCustomerInternalNote] = useState('');
 // Geração automática do número da OS (apenas para OS NOVA)
             useEffect(() => {
                 if (order) return; // edição: mantém o número existente
@@ -6924,6 +7045,15 @@
                     };
                 });
             }, [order, state.orders]);
+
+            useEffect(() => {
+                const nextNote = getCustomerHistorySnapshot(state.orders || [], formData.customerName, formData.id).internalNote || '';
+                setCustomerInternalNote(prev => prev === nextNote ? prev : nextNote);
+            }, [state.orders, formData.customerName, formData.id]);
+
+            const customerHistory = useMemo(() => (
+                getCustomerHistorySnapshot(state.orders || [], formData.customerName, formData.id)
+            ), [state.orders, formData.customerName, formData.id]);
 
             const updateForm = useCallback((updates) => {
                 setFormData(prev => ({ ...prev, ...updates }));
@@ -7145,6 +7275,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                 try {
                     const savedOrder = { ...formData, operationalStatus: formData.operationalStatus || 'ENTRADA' };
+                    saveCustomerNote(savedOrder.customerName, customerInternalNote);
                     dispatch({ type: 'SAVE_ORDER', order: savedOrder });
                     setIsDirty(false);
                     showToast("✅ Ordem salva com sucesso!", "success");
@@ -7200,6 +7331,81 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         value={formData.customerName} 
                         onChange={e => updateForm({ customerName: e.target.value })} 
                     />
+
+                    {String(formData.customerName || '').trim() && (
+                        <div className="os-card p-4 rounded-xl space-y-4 border border-[#d4af37]/15">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO INTELIGENTE DO CLIENTE</p>
+                                    <p className="text-[9px] text-gray-500 mt-1">
+                                        {customerHistory.hasHistory
+                                            ? `Baseado nas OS anteriores de ${formData.customerName.trim()}`
+                                            : 'Cliente ainda sem histórico anterior salvo'}
+                                    </p>
+                                </div>
+                                <div className={`px-2.5 py-1 rounded-full text-[9px] font-usarmy border ${customerHistory.hasHistory ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-400 bg-white/5'}`}>
+                                    {customerHistory.hasHistory ? `${customerHistory.totalOrders} OS` : 'NOVO'}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMA OS</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastOrderLabel || '—'}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
+                                    <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
+                                    <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
+                                    <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastDefect || '—'}</p>
+                                </div>
+                            </div>
+
+                            {customerHistory.lastOrders.length > 0 && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-2">ÚLTIMAS MOVIMENTAÇÕES</p>
+                                    <div className="space-y-2">
+                                        {customerHistory.lastOrders.map((historyOrder) => (
+                                            <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px]">
+                                                <div className="min-w-0">
+                                                    <p className="text-white truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
+                                                    <p className="text-gray-500 truncate">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
+                                                </div>
+                                                <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
+                                    <span className="text-[8px] text-gray-600">uso interno</span>
+                                </div>
+                                <textarea
+                                    className="w-full p-3 rounded-xl h-20 resize-none text-sm"
+                                    placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
+                                    value={customerInternalNote}
+                                    onChange={e => setCustomerInternalNote(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <PhoneInput
                         className="w-full p-4 rounded-xl"
