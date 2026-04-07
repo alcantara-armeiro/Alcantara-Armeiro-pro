@@ -426,32 +426,50 @@
         }
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
 
-        .glow-title {
+
+        .dashboard-premium-btn {
             position: relative;
             overflow: hidden;
+            transition: transform 0.18s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+            will-change: transform;
         }
-        .glow-title::after {
-            content: '';
+        .dashboard-premium-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 12px rgba(212,175,55,0.16), 0 0 28px rgba(212,175,55,0.08);
+        }
+        .dashboard-premium-btn:active {
+            transform: scale(0.98);
+        }
+        .dashboard-premium-btn .dashboard-premium-shine {
             position: absolute;
-            top: 0;
-            left: -100%;
-            width: 60%;
-            height: 100%;
-            background: linear-gradient(120deg, transparent, rgba(212,175,55,0.55), transparent);
-            animation: glowMove 2.6s linear infinite;
+            inset-block: 0;
+            left: -35%;
+            width: 32%;
             pointer-events: none;
+            animation: shineSweep 2.4s linear infinite;
+            transform: skewX(-20deg);
         }
-        @keyframes glowMove {
-            0% { left: -100%; }
-            100% { left: 150%; }
+        .dashboard-premium-btn .dashboard-premium-inner {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
-
-        .dashboard-soft-glow {
-            box-shadow: 0 0 0 rgba(212,175,55,0);
+        .dashboard-premium-card {
+            min-height: 72px;
         }
-        .dashboard-soft-glow:hover,
-        .dashboard-soft-glow:active {
-            box-shadow: 0 0 10px rgba(212,175,55,0.10), 0 0 18px rgba(212,175,55,0.06);
+        .dashboard-premium-card .dashboard-premium-label {
+            font-size: 10px;
+            color: #9ca3af;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            margin-bottom: 3px;
+        }
+        .dashboard-premium-card .dashboard-premium-title {
+            font-size: 11px;
+            line-height: 1.15;
         }
 
     </style>
@@ -932,6 +950,7 @@
                     suppliers: asArray(safeJsonParse(localStorage.getItem('gf_fornecedores'), [])),
                     assistencias: asArray(safeJsonParse(localStorage.getItem('alcantara_assistencias_registros'), [])),
                     parts: asArray(safeJsonParse(localStorage.getItem('gf_pecas'), [])),
+                    equipmentHistory: getEquipmentHistoryRecords(),
                     defaultMargin: localStorage.getItem('gf_margem') || '200',
                     exportDate: new Date().toISOString(),
                     version: '6.2'
@@ -962,6 +981,7 @@
                             if (data.suppliers) localStorage.setItem('gf_fornecedores', JSON.stringify(asArray(data.suppliers)));
                             if (data.assistencias) localStorage.setItem('alcantara_assistencias_registros', JSON.stringify(asArray(data.assistencias)));
                             if (data.parts) localStorage.setItem('gf_pecas', JSON.stringify(asArray(data.parts)));
+                            if (data.equipmentHistory) saveEquipmentHistoryRecords(asArray(data.equipmentHistory));
                             if (data.defaultMargin !== undefined) localStorage.setItem('gf_margem', String(data.defaultMargin));
                             localStorage.setItem('alcantara_os', JSON.stringify(asArray(data.orders)));
                             resolve(data);
@@ -1115,6 +1135,160 @@
             };
         };
 
+        const getLatestCustomerOrder = (orders, customerName, currentOrderId = null) => {
+            const key = normalizeCustomerKey(customerName);
+            if (!key) return null;
+
+            const relatedOrders = asArray(orders)
+                .filter(order => order && order.id !== currentOrderId && normalizeCustomerKey(order.customerName) === key)
+                .sort((a, b) => {
+                    const diff = parsePtBrDate(b.date) - parsePtBrDate(a.date);
+                    if (diff !== 0) return diff;
+                    const osA = parseInt(String(a.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    const osB = parseInt(String(b.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    return osB - osA;
+                });
+
+            return relatedOrders[0] || null;
+        };
+
+        const getCustomerOperationalProfile = (orders, customerName, currentOrderId = null) => {
+            const key = normalizeCustomerKey(customerName);
+            if (!key) return null;
+
+            const relatedOrders = asArray(orders)
+                .filter(order => order && order.id !== currentOrderId && normalizeCustomerKey(order.customerName) === key)
+                .sort((a, b) => {
+                    const diff = parsePtBrDate(b.date) - parsePtBrDate(a.date);
+                    if (diff !== 0) return diff;
+                    const osA = parseInt(String(a.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    const osB = parseInt(String(b.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    return osB - osA;
+                });
+
+            if (!relatedOrders.length) return null;
+
+            const platformCounts = { AEG: 0, GBB: 0, HPA: 0, SPRING: 0, OUTROS: 0 };
+            const serviceCounts = {};
+            const equipmentCounts = {};
+
+            relatedOrders.forEach(order => {
+                const eqUpper = String(order.equipment || '').toUpperCase();
+
+                if (eqUpper.includes('AEG')) platformCounts.AEG += 1;
+                else if (eqUpper.includes('GBB') || eqUpper.includes('GBBR') || eqUpper.includes('PISTOLA')) platformCounts.GBB += 1;
+                else if (eqUpper.includes('HPA')) platformCounts.HPA += 1;
+                else if (eqUpper.includes('SPRING') || eqUpper.includes('MOLA')) platformCounts.SPRING += 1;
+                else platformCounts.OUTROS += 1;
+
+                const normalizedEquipment = String(order.equipment || '').trim();
+                if (normalizedEquipment) equipmentCounts[normalizedEquipment] = (equipmentCounts[normalizedEquipment] || 0) + 1;
+
+                asArray(order.services).forEach(service => {
+                    const serviceName = String(service?.name || '').trim();
+                    if (serviceName) serviceCounts[serviceName] = (serviceCounts[serviceName] || 0) + 1;
+                });
+            });
+
+            const favoritePlatform = Object.entries(platformCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'OUTROS';
+            const favoriteService = Object.entries(serviceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+            const recurringEquipment = Object.entries(equipmentCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([name, count]) => ({ name, count }));
+
+            const latest = relatedOrders[0];
+            const lastSolution = asArray(latest?.services).map(service => service?.name).filter(Boolean).join(', ') || '—';
+            const recurrenceLabel = relatedOrders.length >= 5
+                ? 'CLIENTE ELITE'
+                : relatedOrders.length >= 3
+                    ? 'CLIENTE RECORRENTE'
+                    : relatedOrders.length >= 2
+                        ? 'CLIENTE OCASIONAL'
+                        : 'CLIENTE NOVO';
+
+            const daysSinceLastOrder = latest?.date
+                ? Math.max(0, Math.floor((Date.now() - parsePtBrDate(latest.date)) / 86400000))
+                : null;
+
+            const attentionTags = [];
+            const pendingOrders = relatedOrders.filter(order => {
+                const stage = normalizeOperationalStatus(order.operationalStatus || 'ENTRADA');
+                return order.status !== 'CANCELADA' && stage !== 'ENTREGUE';
+            }).length;
+
+            if (pendingOrders > 0) attentionTags.push('TEM OS PENDENTE');
+            if (favoritePlatform !== 'OUTROS') attentionTags.push(`FOCO ${favoritePlatform}`);
+            if (relatedOrders.length >= 3) attentionTags.push('CLIENTE RECORRENTE');
+            if (relatedOrders.some(order => order.paymentStatus === 'PENDENTE')) attentionTags.push('ATENÇÃO EM PAGAMENTO');
+
+            return {
+                totalOrders: relatedOrders.length,
+                recurrenceLabel,
+                favoritePlatform,
+                favoriteService,
+                lastEquipment: latest?.equipment || '—',
+                lastSolution,
+                daysSinceLastOrder,
+                recurringEquipment,
+                attentionTags: attentionTags.slice(0, 4)
+            };
+        };
+
+
+        const EQUIPMENT_HISTORY_KEY = 'alcantara_equipment_history';
+
+        const getEquipmentHistoryRecords = () => asArray(safeJsonParse(localStorage.getItem(EQUIPMENT_HISTORY_KEY), []))
+            .filter(item => item && typeof item === 'object')
+            .map((item, index) => ({
+                id: String(item.id || `eq_${Date.now()}_${index}`),
+                brand: String(item.brand || '').trim(),
+                model: String(item.model || '').trim(),
+                ammoType: String(item.ammoType || '').trim(),
+                defect: String(item.defect || '').trim(),
+                diagnosis: String(item.diagnosis || '').trim(),
+                classification: String(item.classification || 'EM_ANALISE').trim(),
+                notes: String(item.notes || '').trim(),
+                date: String(item.date || new Date().toLocaleDateString('pt-BR')).trim()
+            }));
+
+        const saveEquipmentHistoryRecords = (records) => {
+            localStorage.setItem(EQUIPMENT_HISTORY_KEY, JSON.stringify(asArray(records)));
+        };
+
+        const getEquipmentHistorySummary = (records) => {
+            const valid = asArray(records).filter(record => record && (record.brand || record.model || record.defect));
+            const bySignature = {};
+            const byDefect = {};
+
+            valid.forEach(record => {
+                const signature = `${String(record.brand || '').trim().toUpperCase()}|${String(record.model || '').trim().toUpperCase()}`;
+                const defectKey = `${String(record.model || '').trim().toUpperCase()}|${String(record.defect || '').trim().toUpperCase()}`;
+
+                if (signature !== '|') bySignature[signature] = (bySignature[signature] || 0) + 1;
+                if (defectKey !== '|') byDefect[defectKey] = (byDefect[defectKey] || 0) + 1;
+            });
+
+            const recurringModels = Object.entries(bySignature)
+                .filter(([, count]) => count > 1)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([signature, count]) => {
+                    const [brand, model] = signature.split('|');
+                    return { label: `${brand || 'SEM MARCA'} ${model || ''}`.trim(), count };
+                });
+
+            const recurringDefects = Object.entries(byDefect)
+                .filter(([, count]) => count > 1)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([signature, count]) => {
+                    const [model, defect] = signature.split('|');
+                    return { label: `${model || 'MODELO'} • ${defect || 'DEFEITO'}`.trim(), count };
+                });
+
+            return { recurringModels, recurringDefects };
+        };
 
         // ========== GERADOR DE PDF - ORDEM DE SERVIÇO ==========
         const generateOrderPDF = async (order) => {
@@ -4863,6 +5037,7 @@
                         {view === 'create' && (
                             <OrderForm 
                                 order={selectedOrder} 
+                                onOpenEquipmentHistory={() => setView('equipment_history')} 
                                 onSave={(savedOrder) => { 
                                     dispatch({ type: 'LOAD' });
                                     if (savedOrder) setSelectedOrder(savedOrder);
@@ -4894,7 +5069,7 @@
                         )}
 
                         {view === 'clients_list' && (
-                            <ClientsList clients={clients} onBack={() => setView('dashboard')} />
+                            <ClientsList clients={clients} orders={orders} onBack={() => setView('dashboard')} />
                         )}
 
                         {view === 'tools' && (
@@ -4935,6 +5110,10 @@
 
                         {view === 'fornecedores' && (
                             <Fornecedores onBack={() => setView('dashboard')} />
+                        )}
+
+                        {view === 'equipment_history' && (
+                            <EquipmentHistoryManager onBack={() => setView('dashboard')} />
                         )}
 
                         {view === 'alcantara_bank' && (
@@ -5963,13 +6142,9 @@
                         <span className="text-[9px] font-usarmy text-[#d4af37]">UNIDADE SP</span>
                     </div>
 
-                    <p className="text-[10px] font-usarmy text-[#d4af37] mb-3 border-b border-white/5 pb-2 tracking-[1px] text-center glow-title w-full">
-                        CENTRO TÁTICO INTELIGENTE
-                    </p>
-
                     <div className="grid grid-cols-2 gap-3 w-full">
                         {dashboardButtons.map(item => (
-                            <button key={item.label} onClick={item.onClick} className={`${item.cardClass} dashboard-soft-glow min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}>
+                            <button key={item.label} onClick={item.onClick} className={`${item.cardClass} min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}>
                                 <div className="flex items-center justify-center mb-2">
                                     <i data-lucide={item.icon} className={`w-8 h-8 ${item.textClass}`}></i>
                                 </div>
@@ -5979,53 +6154,64 @@
                         ))}
                     </div>
 
-                    <button
-                        onClick={() => {
-                            setView('create');
-                            try {
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            } catch (e) {
-                                window.scrollTo(0, 0);
-                            }
-                            setTimeout(() => {
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                        <button
+                            onClick={() => {
+                                setView('create');
                                 try {
                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                 } catch (e) {
                                     window.scrollTo(0, 0);
                                 }
-                            }, 140);
-                        }}
-                        className="w-full gold-gradient p-6 rounded-xl font-usarmy text-base shadow-2xl relative overflow-hidden border border-[#f5d36a]/50"
-                        style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
-                    >
-                        <span
-                            className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
-                        ></span>
-                        <span className="relative z-10">+ NOVA ORDEM DE SERVIÇO</span>
-                    </button>
+                                setTimeout(() => {
+                                    try {
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    } catch (e) {
+                                        window.scrollTo(0, 0);
+                                    }
+                                }, 140);
+                            }}
+                            className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
+                            style={{ background: 'linear-gradient(135deg, #8b6a14 0%, #d4af37 50%, #8b6a14 100%)', boxShadow: '0 0 12px rgba(212,175,55,0.28), 0 0 28px rgba(212,175,55,0.12)', borderColor: 'rgba(245,211,106,0.45)' }}
+                        >
+                            <span
+                                className="dashboard-premium-shine"
+                                style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)' }}
+                            ></span>
+                            <span className="dashboard-premium-inner justify-start">
+                                <i data-lucide="plus-circle" className="w-5 h-5 text-black"></i>
+                                <span className="text-left">
+                                    <span className="dashboard-premium-label block text-black/65">AÇÃO</span>
+                                    <span className="dashboard-premium-title block text-black">NOVA ORDEM</span>
+                                </span>
+                            </span>
+                        </button>
 
-                    <button
-                        onClick={() => {
-                            setView('assistencia_tecnica');
-                            try {
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            } catch (e) {
-                                window.scrollTo(0, 0);
-                            }
-                        }}
-                        className="w-full p-6 rounded-xl font-usarmy text-base shadow-2xl relative overflow-hidden border mt-3 text-white"
-                        style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)', boxShadow: '0 0 12px rgba(111,143,66,0.35), 0 0 28px rgba(111,143,66,0.18)', borderColor: 'rgba(143,184,90,0.45)' }}
-                    >
-                        <span
-                            className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
-                        ></span>
-                        <span className="relative z-10 flex items-center justify-center gap-2">
-                            <i data-lucide="shield-check" className="w-5 h-5"></i>
-                            ASSISTÊNCIA TÉCNICA
-                        </span>
-                    </button>
+                        <button
+                            onClick={() => {
+                                setView('assistencia_tecnica');
+                                try {
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                } catch (e) {
+                                    window.scrollTo(0, 0);
+                                }
+                            }}
+                            className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
+                            style={{ background: 'linear-gradient(135deg, #314c1b 0%, #5d7a37 50%, #314c1b 100%)', boxShadow: '0 0 12px rgba(111,143,66,0.28), 0 0 28px rgba(111,143,66,0.12)', borderColor: 'rgba(143,184,90,0.45)' }}
+                        >
+                            <span
+                                className="dashboard-premium-shine"
+                                style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)' }}
+                            ></span>
+                            <span className="dashboard-premium-inner justify-start">
+                                <i data-lucide="shield-check" className="w-5 h-5 text-[#d7f1aa]"></i>
+                                <span className="text-left">
+                                    <span className="dashboard-premium-label block text-[#d7f1aa]/70">SUPORTE</span>
+                                    <span className="dashboard-premium-title block text-white">ASSISTÊNCIA</span>
+                                </span>
+                            </span>
+                        </button>
+                    </div>
 
                     <div className="w-full os-card rounded-xl p-0 border border-white/5">
                         <p className="text-[10px] font-usarmy text-[#d4af37] mb-3 border-b border-white/5 pb-2 tracking-[1px]
@@ -6087,20 +6273,42 @@
                                         ALCANTARA ARMEIRO BANK
                                     </span>
                                 </button>
-                                <button
-                                    onClick={() => setView('fornecedores')}
-                                    className="w-full p-6 rounded-xl font-usarmy text-base shadow-2xl relative overflow-hidden border mt-3 text-white"
-                                    style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)', boxShadow: '0 0 12px rgba(111,143,66,0.35), 0 0 28px rgba(111,143,66,0.18)', borderColor: 'rgba(143,184,90,0.45)' }}
-                                >
-                                    <span
-                                        className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                                        style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
-                                    ></span>
-                                    <span className="relative z-10 flex items-center justify-center gap-2">
-                                        <i data-lucide="truck" className="w-5 h-5"></i>
-                                        FORNECEDORES
-                                    </span>
-                                </button>
+                                <div className="grid grid-cols-2 gap-3 mt-3">
+                                    <button
+                                        onClick={() => setView('fornecedores')}
+                                        className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
+                                        style={{ background: 'linear-gradient(135deg, #233246 0%, #1b2837 50%, #17212e 100%)', boxShadow: '0 0 12px rgba(59,130,246,0.22), 0 0 28px rgba(59,130,246,0.12)', borderColor: 'rgba(96,165,250,0.35)' }}
+                                    >
+                                        <span
+                                            className="dashboard-premium-shine"
+                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(173,216,255,0.18) 50%, rgba(255,255,255,0) 100%)' }}
+                                        ></span>
+                                        <span className="dashboard-premium-inner justify-start">
+                                            <i data-lucide="building-2" className="w-5 h-5 text-[#b9d9ff]"></i>
+                                            <span className="text-left">
+                                                <span className="dashboard-premium-label block text-[#b9d9ff]/70">BASE</span>
+                                                <span className="dashboard-premium-title block text-white">FORNECEDORES</span>
+                                            </span>
+                                        </span>
+                                    </button>
+                                    <button
+                                        onClick={() => setView('equipment_history')}
+                                        className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
+                                        style={{ background: 'linear-gradient(135deg, #233246 0%, #1b2837 50%, #17212e 100%)', boxShadow: '0 0 12px rgba(59,130,246,0.22), 0 0 28px rgba(59,130,246,0.12)', borderColor: 'rgba(96,165,250,0.35)' }}
+                                    >
+                                        <span
+                                            className="dashboard-premium-shine"
+                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(173,216,255,0.18) 50%, rgba(255,255,255,0) 100%)' }}
+                                        ></span>
+                                        <span className="dashboard-premium-inner justify-start">
+                                            <i data-lucide="database" className="w-5 h-5 text-[#b9d9ff]"></i>
+                                            <span className="text-left">
+                                                <span className="dashboard-premium-label block text-[#b9d9ff]/70">BANCO</span>
+                                                <span className="dashboard-premium-title block text-white">HIST. EQUIP.</span>
+                                            </span>
+                                        </span>
+                                    </button>
+                                </div>
                     </div>
                 </div>
             );
@@ -6990,7 +7198,7 @@
             );
         };
 
-        const OrderForm = ({ order, onSave, onBack }) => {
+        const OrderForm = ({ order, onSave, onBack, onOpenEquipmentHistory }) => {
             const { state, dispatch } = useDb();
             const { confirm, modal: confirmModal } = useConfirm();
             const [isDirty, setIsDirty] = useState(false);
@@ -7055,10 +7263,28 @@
                 getCustomerHistorySnapshot(state.orders || [], formData.customerName, formData.id)
             ), [state.orders, formData.customerName, formData.id]);
 
+            const customerOperationalProfile = useMemo(() => (
+                getCustomerOperationalProfile(state.orders || [], formData.customerName, formData.id)
+            ), [state.orders, formData.customerName, formData.id]);
+
+            const latestCustomerOrder = useMemo(() => (
+                getLatestCustomerOrder(state.orders || [], formData.customerName, formData.id)
+            ), [state.orders, formData.customerName, formData.id]);
+
             const updateForm = useCallback((updates) => {
                 setFormData(prev => ({ ...prev, ...updates }));
                 setIsDirty(true);
             }, []);
+
+            const handlePullCustomerData = useCallback(() => {
+                if (!latestCustomerOrder) return;
+                updateForm({
+                    customerName: latestCustomerOrder.customerName || formData.customerName || '',
+                    customerPhone: latestCustomerOrder.customerPhone || '',
+                    equipment: latestCustomerOrder.equipment || ''
+                });
+                showToast('✅ Dados do cliente aplicados na nova OS', 'success');
+            }, [latestCustomerOrder, updateForm, formData.customerName]);
 
             const handleSelectCatalog = (selectedId) => {
                 if (!selectedId) return;
@@ -7332,30 +7558,33 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         onChange={e => updateForm({ customerName: e.target.value })} 
                     />
 
-                    {String(formData.customerName || '').trim() && (
-                        <div className="os-card p-4 rounded-xl space-y-4 border border-[#d4af37]/15">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO INTELIGENTE DO CLIENTE</p>
-                                    <p className="text-[9px] text-gray-500 mt-1">
-                                        {customerHistory.hasHistory
-                                            ? `Baseado nas OS anteriores de ${formData.customerName.trim()}`
-                                            : 'Cliente ainda sem histórico anterior salvo'}
-                                    </p>
-                                </div>
-                                <div className={`px-2.5 py-1 rounded-full text-[9px] font-usarmy border ${customerHistory.hasHistory ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-400 bg-white/5'}`}>
-                                    {customerHistory.hasHistory ? `${customerHistory.totalOrders} OS` : 'NOVO'}
-                                </div>
+                    {customerHistory.hasHistory && (
+                        <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
+                            <p className="text-[10px] font-usarmy text-[#d4af37] text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handlePullCustomerData}
+                                    className="gold-gradient p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2"
+                                >
+                                    <i data-lucide="user-plus" className="w-4 h-4"></i>
+                                    PUXAR DADOS
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenEquipmentHistory?.()}
+                                    className="p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border border-[#d4af37]/20 text-[#d4af37] bg-black/20"
+                                >
+                                    <i data-lucide="database" className="w-4 h-4"></i>
+                                    HIST. EQUIP.
+                                </button>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
                                 <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMA OS</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastOrderLabel || '—'}</p>
+                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
+                                    <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
                                 </div>
                                 <div className="bg-black/25 rounded-lg p-3 border border-white/5">
                                     <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
@@ -7368,6 +7597,10 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 <div className="bg-black/25 rounded-lg p-3 border border-white/5">
                                     <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
                                     <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
                                 </div>
                                 <div className="bg-black/25 rounded-lg p-3 border border-white/5">
                                     <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
@@ -7389,6 +7622,63 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {customerOperationalProfile && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3">
+                                    <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">PERFIL OPERACIONAL DO CLIENTE</p>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">CLASSIFICAÇÃO</p>
+                                            <p className="text-[10px] text-white font-bold">{customerOperationalProfile.recurrenceLabel}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">PLATAFORMA</p>
+                                            <p className="text-[10px] text-white font-bold">{customerOperationalProfile.favoritePlatform}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">SERVIÇO RECORRENTE</p>
+                                            <p className="text-[10px] text-white font-bold leading-tight">{customerOperationalProfile.favoriteService}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">ÚLTIMA VISITA</p>
+                                            <p className="text-[10px] text-white font-bold">{customerOperationalProfile.daysSinceLastOrder === null ? '—' : `${customerOperationalProfile.daysSinceLastOrder} dias`}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                        <p className="text-[8px] text-gray-500 mb-1">ÚLTIMA SOLUÇÃO APLICADA</p>
+                                        <p className="text-[10px] text-white leading-tight">{customerOperationalProfile.lastSolution || '—'}</p>
+                                    </div>
+
+                                    {customerOperationalProfile.recurringEquipment.length > 0 && (
+                                        <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-2">EQUIPAMENTOS RECORRENTES</p>
+                                            <div className="space-y-2">
+                                                {customerOperationalProfile.recurringEquipment.map((item, index) => (
+                                                    <div key={`${item.name}_${index}`} className="flex items-center justify-between gap-3 text-[9px]">
+                                                        <p className="text-white truncate flex-1">{item.name}</p>
+                                                        <span className="text-[#d4af37] font-bold whitespace-nowrap">{item.count}x</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {customerOperationalProfile.attentionTags.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[8px] text-gray-500">ALERTAS DE ATENÇÃO</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {customerOperationalProfile.attentionTags.map((tag, index) => (
+                                                    <span key={`${tag}_${index}`} className="px-2 py-1 rounded-full border border-[#d4af37]/20 bg-[#d4af37]/10 text-[8px] font-usarmy text-[#f2d06a]">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -8623,8 +8913,11 @@ Alcantara Armeiro - Airsoft Repairs
             );
         };
 
-        const ClientsList = ({ clients, onBack }) => {
+
+        const ClientsList = ({ clients, orders, onBack }) => {
             const [searchClients, setSearchClients] = useState('');
+            const [selectedClient, setSelectedClient] = useState(null);
+
             const filteredClients = useMemo(() =>
                 searchClients.trim()
                     ? clients.filter(c =>
@@ -8633,20 +8926,21 @@ Alcantara Armeiro - Airsoft Repairs
                     : clients,
                 [clients, searchClients]);
 
+            const selectedBundle = useMemo(() => (
+                selectedClient ? {
+                    history: getCustomerHistorySnapshot(orders || [], selectedClient.name),
+                    profile: getCustomerOperationalProfile(orders || [], selectedClient.name)
+                } : null
+            ), [orders, selectedClient]);
+
             const formatWhatsAppNumber = (phone) => {
                 if (!phone || phone === 'Não informado') return null;
-
                 let cleaned = phone.replace(/\D/g, '');
-
                 if (cleaned.length === 0) return null;
-
                 if (!cleaned.startsWith('55')) {
-                    if (cleaned.startsWith('0')) {
-                        cleaned = cleaned.substring(1);
-                    }
+                    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
                     cleaned = '55' + cleaned;
                 }
-
                 return cleaned;
             };
 
@@ -8671,6 +8965,59 @@ Alcantara Armeiro - Airsoft Repairs
                             aria-label="Buscar cliente"
                         />
                     </div>
+
+                    {selectedClient && selectedBundle?.history?.hasHistory && (
+                        <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
+                            <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+                                <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO DO CLIENTE</p>
+                                <button type="button" onClick={() => setSelectedClient(null)} className="text-[8px] text-gray-500 font-usarmy">FECHAR</button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">CLIENTE</p>
+                                    <p className="text-[10px] text-white font-bold">{selectedClient.name}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
+                                    <p className="text-[10px] text-white font-bold">{selectedBundle.history.totalOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
+                                    <p className="text-[10px] text-[#d4af37] font-bold">R$ {selectedBundle.history.averageTicket.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
+                                    <p className={`text-[10px] font-bold ${selectedBundle.history.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{selectedBundle.history.pendingOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
+                                    <p className="text-[10px] text-white leading-tight">{selectedBundle.history.lastEquipment || '—'}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
+                                    <p className="text-[10px] text-white leading-tight">{selectedBundle.history.lastDefect || '—'}</p>
+                                </div>
+                            </div>
+
+                            {selectedBundle.profile && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10">
+                                    <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">PERFIL OPERACIONAL</p>
+                                    <div className="grid grid-cols-2 gap-2 mt-3">
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">CLASSIFICAÇÃO</p>
+                                            <p className="text-[10px] text-white font-bold">{selectedBundle.profile.recurrenceLabel}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">PLATAFORMA</p>
+                                            <p className="text-[10px] text-white font-bold">{selectedBundle.profile.favoritePlatform}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         {filteredClients.length === 0 ? (
                             <div className="text-center py-20">
@@ -8682,14 +9029,18 @@ Alcantara Armeiro - Airsoft Repairs
                         ) : (
                             filteredClients.map((c, i) => {
                                 const whatsappNumber = formatWhatsAppNumber(c.phone);
+                                const isSelected = selectedClient?.name === c.name;
 
                                 return (
-                                    <div 
-                                        key={i} 
-                                        className="os-card p-4 rounded-xl border-l-2 border-[#d4af37]/40 flex justify-between items-center"
-                                    >
-                                        <div className="flex-1 min-w-0 mr-4">
-                                            <p className="text-white font-usarmy text-sm mb-1 truncate">{c.name}</p>
+                                    <div key={i} className="os-card p-4 rounded-xl border-l-2 border-[#d4af37]/40 flex justify-between items-center gap-3">
+                                        <div className="flex-1 min-w-0 mr-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedClient(c)}
+                                                className="text-white font-usarmy text-sm mb-1 truncate text-left w-full hover:text-[#d4af37]"
+                                            >
+                                                {c.name}
+                                            </button>
                                             <p className="text-[10px] text-gray-500">{c.phone}</p>
                                             {whatsappNumber && (
                                                 <p className="text-[8px] text-green-600/70 mt-1">
@@ -8697,23 +9048,272 @@ Alcantara Armeiro - Airsoft Repairs
                                                 </p>
                                             )}
                                         </div>
-                                        {whatsappNumber ? (
-                                            <a 
-                                                href={`https://wa.me/${whatsappNumber}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="btn-icon text-green-500 hover:text-green-400 transition-colors flex-shrink-0"
+
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedClient(isSelected ? null : c)}
+                                                className={`btn-icon rounded-lg border ${isSelected ? 'border-[#d4af37]/40 text-[#d4af37] bg-[#d4af37]/10' : 'border-white/10 text-gray-400 bg-black/20'}`}
+                                                title="Abrir histórico"
                                             >
-                                                <i data-lucide="message-circle" className="w-6 h-6"></i>
-                                            </a>
-                                        ) : (
-                                            <span className="text-gray-600 text-[10px] flex-shrink-0">
-                                                Sem número
-                                            </span>
-                                        )}
+                                                <i data-lucide="history" className="w-4 h-4"></i>
+                                            </button>
+                                            {whatsappNumber ? (
+                                                <a
+                                                    href={`https://wa.me/${whatsappNumber}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="btn-icon text-green-500 hover:text-green-400 transition-colors"
+                                                >
+                                                    <i data-lucide="message-circle" className="w-6 h-6"></i>
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-600 text-[10px]">Sem número</span>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const EquipmentHistoryManager = ({ onBack }) => {
+            const { confirm, modal: confirmModal } = useConfirm();
+            const [records, setRecords] = useState(() => getEquipmentHistoryRecords());
+            const [search, setSearch] = useState('');
+            const [editingId, setEditingId] = useState(null);
+            const [form, setForm] = useState({
+                brand: '',
+                model: '',
+                ammoType: '',
+                defect: '',
+                diagnosis: '',
+                classification: 'EM_ANALISE',
+                notes: ''
+            });
+
+            useEffect(() => {
+                saveEquipmentHistoryRecords(records);
+            }, [records]);
+
+            const resetForm = () => {
+                setForm({
+                    brand: '',
+                    model: '',
+                    ammoType: '',
+                    defect: '',
+                    diagnosis: '',
+                    classification: 'EM_ANALISE',
+                    notes: ''
+                });
+                setEditingId(null);
+            };
+
+            const filteredRecords = useMemo(() => {
+                const term = search.trim().toLowerCase();
+                if (!term) return records;
+                return records.filter(record =>
+                    [record.brand, record.model, record.ammoType, record.defect, record.diagnosis, record.notes, record.classification]
+                        .some(value => String(value || '').toLowerCase().includes(term))
+                );
+            }, [records, search]);
+
+            const summary = useMemo(() => getEquipmentHistorySummary(records), [records]);
+
+            const handleSubmit = () => {
+                if (!form.brand.trim() || !form.model.trim() || !form.defect.trim()) {
+                    showToast('⚠️ Preencha marca, modelo e defeito', 'warning');
+                    return;
+                }
+
+                const payload = {
+                    id: editingId || String(Date.now()),
+                    brand: form.brand.trim(),
+                    model: form.model.trim(),
+                    ammoType: form.ammoType.trim(),
+                    defect: form.defect.trim(),
+                    diagnosis: form.diagnosis.trim(),
+                    classification: form.classification,
+                    notes: form.notes.trim(),
+                    date: new Date().toLocaleDateString('pt-BR')
+                };
+
+                setRecords(prev => editingId
+                    ? prev.map(item => item.id === editingId ? payload : item)
+                    : [payload, ...prev]
+                );
+
+                showToast(editingId ? '✅ Histórico atualizado' : '✅ Histórico de equipamento salvo', 'success');
+                resetForm();
+            };
+
+            const handleEdit = (record) => {
+                setEditingId(record.id);
+                setForm({
+                    brand: record.brand || '',
+                    model: record.model || '',
+                    ammoType: record.ammoType || '',
+                    defect: record.defect || '',
+                    diagnosis: record.diagnosis || '',
+                    classification: record.classification || 'EM_ANALISE',
+                    notes: record.notes || ''
+                });
+                try {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch (e) {
+                    window.scrollTo(0, 0);
+                }
+            };
+
+            const handleDelete = async (id) => {
+                const ok = await confirm({
+                    message: 'EXCLUIR REGISTRO?',
+                    subMessage: 'Este histórico será removido do banco de equipamentos.',
+                    confirmLabel: 'EXCLUIR',
+                    confirmClass: 'bg-red-600 text-white',
+                    icon: 'trash-2'
+                });
+                if (!ok) return;
+                setRecords(prev => prev.filter(item => item.id !== id));
+                showToast('🗑️ Registro removido', 'success');
+            };
+
+            return (
+                <div className="space-y-6 animate-fadeIn pb-10">
+                    {confirmModal}
+                    <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                        <button type="button" onClick={onBack} className="btn-icon text-[#d4af37]">
+                            <i data-lucide="arrow-left" className="w-5 h-5"></i>
+                        </button>
+                        <h2 className="font-usarmy text-[#d4af37] text-sm">HISTÓRICO DE EQUIPAMENTOS</h2>
+                        <div className="w-10"></div>
+                    </div>
+
+                    <div className="os-card p-4 rounded-xl space-y-4">
+                        <p className="text-[10px] font-usarmy text-[#d4af37] border-b border-white/5 pb-2 text-center">
+                            BANCO TÉCNICO DE EQUIPAMENTOS
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <input value={form.brand} onChange={e => setForm(prev => ({ ...prev, brand: e.target.value }))} placeholder="Marca *" className="w-full p-3 rounded-xl" />
+                            <input value={form.model} onChange={e => setForm(prev => ({ ...prev, model: e.target.value }))} placeholder="Modelo *" className="w-full p-3 rounded-xl" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <input value={form.ammoType} onChange={e => setForm(prev => ({ ...prev, ammoType: e.target.value }))} placeholder="Tipo de munição" className="w-full p-3 rounded-xl" />
+                            <select value={form.classification} onChange={e => setForm(prev => ({ ...prev, classification: e.target.value }))} className="w-full p-3 rounded-xl">
+                                <option value="EM_ANALISE">EM ANÁLISE</option>
+                                <option value="DEFEITO_RECORRENTE">DEFEITO RECORRENTE</option>
+                                <option value="MAU_USO">MAU USO</option>
+                                <option value="DEFEITO_DE_FABRICA">DEFEITO DE FÁBRICA</option>
+                                <option value="OUTROS">OUTROS</option>
+                            </select>
+                        </div>
+
+                        <textarea value={form.defect} onChange={e => setForm(prev => ({ ...prev, defect: e.target.value }))} placeholder="Defeito relatado *" className="w-full p-3 rounded-xl h-20 resize-none" />
+                        <textarea value={form.diagnosis} onChange={e => setForm(prev => ({ ...prev, diagnosis: e.target.value }))} placeholder="Diagnóstico / causa provável" className="w-full p-3 rounded-xl h-20 resize-none" />
+                        <textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Observações técnicas" className="w-full p-3 rounded-xl h-20 resize-none" />
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button type="button" onClick={handleSubmit} className="gold-gradient p-3 rounded-xl font-usarmy text-sm">
+                                {editingId ? 'SALVAR EDIÇÃO' : 'SALVAR HISTÓRICO'}
+                            </button>
+                            <button type="button" onClick={resetForm} className="p-3 rounded-xl font-usarmy text-sm border border-white/10 text-gray-300 bg-black/20">
+                                LIMPAR
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="os-card p-4 rounded-xl space-y-3">
+                        <p className="text-[10px] font-usarmy text-[#d4af37] border-b border-white/5 pb-2 text-center">
+                            CONSULTA DE RECORRÊNCIA
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                <p className="text-[8px] text-gray-500 mb-2">MODELOS RECORRENTES</p>
+                                {summary.recurringModels.length === 0 ? (
+                                    <p className="text-[9px] text-gray-400">Sem repetição ainda</p>
+                                ) : summary.recurringModels.map((item, index) => (
+                                    <div key={`model_${index}`} className="flex items-center justify-between gap-3 text-[9px] py-1">
+                                        <p className="text-white truncate flex-1">{item.label}</p>
+                                        <span className="text-[#d4af37] font-bold">{item.count}x</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                <p className="text-[8px] text-gray-500 mb-2">DEFEITOS RECORRENTES</p>
+                                {summary.recurringDefects.length === 0 ? (
+                                    <p className="text-[9px] text-gray-400">Sem repetição ainda</p>
+                                ) : summary.recurringDefects.map((item, index) => (
+                                    <div key={`defect_${index}`} className="flex items-center justify-between gap-3 text-[9px] py-1">
+                                        <p className="text-white truncate flex-1">{item.label}</p>
+                                        <span className="text-[#d4af37] font-bold">{item.count}x</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="relative">
+                        <i data-lucide="search" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                        <input
+                            type="text"
+                            placeholder="Buscar marca, modelo, defeito, munição..."
+                            className="w-full pl-12 p-3 rounded-xl text-sm"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="space-y-3">
+                        {filteredRecords.length === 0 ? (
+                            <div className="text-center py-20">
+                                <i data-lucide="database" className="w-16 h-16 text-gray-700 mx-auto mb-4"></i>
+                                <p className="text-gray-600 font-usarmy text-xs">NENHUM HISTÓRICO DE EQUIPAMENTO</p>
+                            </div>
+                        ) : (
+                            filteredRecords.map(record => (
+                                <div key={record.id} className="os-card p-4 rounded-xl border-l-2 border-[#d4af37]/35">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm text-white font-bold">{record.brand} • {record.model}</p>
+                                            <p className="text-[9px] text-gray-500 mt-1">{record.ammoType || 'Munição não informada'} • {record.date}</p>
+                                        </div>
+                                        <span className="text-[8px] px-2 py-1 rounded-full border border-[#d4af37]/20 bg-[#d4af37]/10 text-[#f2d06a] font-usarmy whitespace-nowrap">
+                                            {String(record.classification || 'EM_ANALISE').replaceAll('_', ' ')}
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-3 space-y-2 text-[10px]">
+                                        <div>
+                                            <p className="text-gray-500 mb-1">DEFEITO</p>
+                                            <p className="text-white leading-tight">{record.defect || '—'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-500 mb-1">DIAGNÓSTICO</p>
+                                            <p className="text-white leading-tight">{record.diagnosis || '—'}</p>
+                                        </div>
+                                        {record.notes && (
+                                            <div>
+                                                <p className="text-gray-500 mb-1">OBSERVAÇÕES</p>
+                                                <p className="text-white leading-tight">{record.notes}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-3 flex items-center justify-end gap-2">
+                                        <button type="button" onClick={() => handleEdit(record)} className="px-3 py-2 rounded-lg border border-white/10 text-gray-200 bg-black/20 text-[9px] font-usarmy">
+                                            EDITAR
+                                        </button>
+                                        <button type="button" onClick={() => handleDelete(record.id)} className="px-3 py-2 rounded-lg border border-red-500/20 text-red-300 bg-red-500/10 text-[9px] font-usarmy">
+                                            EXCLUIR
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
                         )}
                     </div>
                 </div>
