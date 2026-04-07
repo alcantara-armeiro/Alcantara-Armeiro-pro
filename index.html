@@ -472,62 +472,6 @@
             line-height: 1.15;
         }
 
-
-        /* SPLASH PREMIUM */
-        @keyframes splashLogoFloat {
-            0%, 100% { transform: translateY(0) scale(1); }
-            50% { transform: translateY(-4px) scale(1.01); }
-        }
-        @keyframes splashFadeUp {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes splashGlowPulse {
-            0%, 100% { opacity: 0.20; transform: scale(0.95); }
-            50% { opacity: 0.38; transform: scale(1.03); }
-        }
-        @keyframes splashBarLoad {
-            0% { width: 0%; opacity: 0.6; }
-            100% { width: 100%; opacity: 1; }
-        }
-        .splash-logo-wrap {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            animation: splashLogoFloat 2.8s ease-in-out infinite;
-        }
-        .splash-logo-glow {
-            position: absolute;
-            inset: -14px;
-            border-radius: 9999px;
-            background: radial-gradient(circle, rgba(212,175,55,0.26) 0%, rgba(212,175,55,0.10) 45%, rgba(212,175,55,0) 75%);
-            filter: blur(18px);
-            animation: splashGlowPulse 2.6s ease-in-out infinite;
-        }
-        .splash-fade-up {
-            animation: splashFadeUp 0.7s ease-out both;
-        }
-        .splash-title-gold {
-            color: #d4af37;
-            text-shadow: 0 0 16px rgba(212,175,55,0.22);
-        }
-        .splash-loading-track {
-            width: 180px;
-            max-width: 72vw;
-            height: 4px;
-            border-radius: 9999px;
-            background: rgba(255,255,255,0.08);
-            overflow: hidden;
-            margin: 16px auto 0;
-        }
-        .splash-loading-bar {
-            height: 100%;
-            border-radius: 9999px;
-            background: linear-gradient(90deg, #8a6a10 0%, #d4af37 55%, #f0d77a 100%);
-            animation: splashBarLoad 1.9s ease-out forwards;
-        }
-
     </style>
 </head>
 
@@ -5361,62 +5305,48 @@
 
             return (
                 <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center px-8">
-                    <div
-                        className="absolute inset-0 opacity-25"
-                        style={{backgroundImage: 'radial-gradient(circle at center, rgba(80,60,10,0.35) 0%, #050505 55%, #000 100%)'}}
-                    ></div>
+                    <div className="absolute inset-0 opacity-20" 
+                         style={{backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000 100%)'}}></div>
 
-                    <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
-                        <div className="splash-logo-wrap mb-6 splash-fade-up">
-                            <div className="splash-logo-glow"></div>
-                            <img src={LOGO_URL} className="relative w-36 h-36 rounded-full border-2 border-[#d4af37]/35" alt="Logo" />
-                        </div>
-
-                        <div className="text-center splash-fade-up" style={{ animationDelay: '0.12s' }}>
-                            <h1 className="font-usarmy splash-title-gold text-[34px] leading-[0.95] tracking-[0.08em]">
-                                ALCANTARA<br />ARMEIRO
-                            </h1>
-                            <p className="text-[11px] text-gray-500 font-bold tracking-[0.42em] mt-3">AIRSOFT REPAIRS</p>
-                            <div className="splash-loading-track">
-                                <div className="splash-loading-bar"></div>
-                            </div>
-                        </div>
-
-                        <div className="w-full mt-10 space-y-6 relative z-10 splash-fade-up" style={{ animationDelay: '0.24s' }}>
-                            <div className="text-center space-y-2">
-                                <h2 className="font-usarmy text-[#d4af37] text-xl">SISTEMA TÁTICO</h2>
-                                <p className="text-[10px] text-gray-500 font-medium tracking-[0.3em]">AUTENTICAÇÃO DE OPERADOR</p>
-                            </div>
-
-                            <div className="relative">
-                                <input 
-                                    ref={inputRef}
-                                    type="password" 
-                                    placeholder="DIGITE A SENHA DE ACESSO"
-                                    autoComplete="current-password"
-                                    className={`w-full bg-[#0a0a0a] border ${error ? 'border-red-600' : 'border-white/10'} p-4 rounded-xl text-center text-sm tracking-[0.2em] outline-none ${shake ? 'shake' : ''}`}
-                                    value={pass} 
-                                    onChange={e => setPass(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                                    autoFocus
-                                />
-                                {error && (
-                                    <p className="absolute -bottom-6 text-center text-[9px] text-red-500 font-bold w-full">
-                                        ACESSO NEGADO - CREDENCIAIS INVÁLIDAS
-                                    </p>
-                                )}
-                            </div>
-
-                            <button 
-                                onClick={handleLogin}
-                                className="w-full gold-gradient p-4 rounded-xl font-usarmy text-sm tracking-widest"
-                            >
-                                AUTORIZAR ENTRADA
-                            </button>
-                        </div>
+                    <div className="relative mb-12">
+                        <div className="absolute -inset-1 bg-[#d4af37] rounded-full blur opacity-25"></div>
+                        <img src={LOGO_URL} className="relative w-32 h-32 rounded-full border-2 border-[#d4af37]/40" alt="Logo" />
                     </div>
 
-                    <div className="absolute bottom-10 text-center splash-fade-up" style={{ animationDelay: '0.34s' }}>
+                    <div className="w-full max-w-xs space-y-6 relative z-10">
+                        <div className="text-center space-y-2">
+                            <h1 className="font-usarmy text-[#d4af37] text-2xl">SISTEMA TÁTICO</h1>
+                            <p className="text-[10px] text-gray-500 font-medium tracking-[0.3em]">AUTENTICAÇÃO DE OPERADOR</p>
+                        </div>
+
+                        <div className="relative">
+                            <input 
+                                ref={inputRef}
+                                type="password" 
+                                placeholder="DIGITE A SENHA DE ACESSO"
+                                autoComplete="current-password"
+                                className={`w-full bg-[#0a0a0a] border ${error ? 'border-red-600' : 'border-white/10'} p-4 rounded-xl text-center text-sm tracking-[0.2em] outline-none ${shake ? 'shake' : ''}`}
+                                value={pass} 
+                                onChange={e => setPass(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                                autoFocus
+                            />
+                            {error && (
+                                <p className="absolute -bottom-6 text-center text-[9px] text-red-500 font-bold w-full">
+                                    ACESSO NEGADO - CREDENCIAIS INVÁLIDAS
+                                </p>
+                            )}
+                        </div>
+
+                        <button 
+                            onClick={handleLogin}
+                            className="w-full gold-gradient p-4 rounded-xl font-usarmy text-sm tracking-widest"
+                        >
+                            AUTORIZAR ENTRADA
+                        </button>
+                    </div>
+
+                    <div className="absolute bottom-10 text-center">
                         <p className="text-[8px] text-gray-600 font-usarmy tracking-[0.5em]">ALCANTARA PRO v7.0</p>
                     </div>
                 </div>
@@ -6276,7 +6206,6 @@
                             <span className="dashboard-premium-inner justify-start">
                                 <i data-lucide="shield-check" className="w-5 h-5 text-[#d7f1aa]"></i>
                                 <span className="text-left">
-                                    <span className="dashboard-premium-label block text-[#d7f1aa]/70">SUPORTE</span>
                                     <span className="dashboard-premium-title block text-white">ASSISTÊNCIA</span>
                                 </span>
                             </span>
@@ -6356,7 +6285,6 @@
                                         <span className="dashboard-premium-inner justify-start">
                                             <i data-lucide="building-2" className="w-5 h-5 text-[#b9d9ff]"></i>
                                             <span className="text-left">
-                                                <span className="dashboard-premium-label block text-[#b9d9ff]/70">BASE</span>
                                                 <span className="dashboard-premium-title block text-white">FORNECEDORES</span>
                                             </span>
                                         </span>
@@ -6372,8 +6300,7 @@
                                         ></span>
                                         <span className="dashboard-premium-inner justify-start">
                                             <i data-lucide="database" className="w-5 h-5 text-[#b9d9ff]"></i>
-                                            <span className="text-left">
-                                                <span className="dashboard-premium-label block text-[#b9d9ff]/70">BANCO</span>
+                                            <span className="text-left">                                           
                                                 <span className="dashboard-premium-title block text-white">HIST. EQUIP.</span>
                                             </span>
                                         </span>
@@ -9481,5 +9408,7 @@ Alcantara Armeiro - Airsoft Repairs
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>diszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
