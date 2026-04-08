@@ -2153,6 +2153,66 @@
                     totalIncome: p.i+w.i, totalExpense: p.e+w.e, count: filtered.length };
             }, [transactions, selectedMonth]);
 
+
+            const periodStats = useMemo(() => {
+                const todayKey = isoToday();
+                const nowRef = new Date();
+                const dayOfWeek = nowRef.getDay();
+                const diffToMonday = (dayOfWeek + 6) % 7;
+                const monday = new Date(nowRef.getFullYear(), nowRef.getMonth(), nowRef.getDate() - diffToMonday, 12, 0, 0, 0);
+                const sunday = new Date(monday);
+                sunday.setDate(monday.getDate() + 6);
+                const build = (items) => items.reduce((acc, item) => {
+                    const value = Number(item.value || 0);
+                    const areaKey = item.area === 'pessoal' ? 'pessoal' : 'oficina';
+                    if (item.type === 'entrada') acc[areaKey].entrada += value;
+                    else acc[areaKey].saida += value;
+                    if (areaKey === 'oficina' && item.type === 'saida' && (item.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(item.category))) {
+                        acc[areaKey].pessoalNaOficina += value;
+                    }
+                    return acc;
+                }, {
+                    pessoal: { entrada: 0, saida: 0, pessoalNaOficina: 0 },
+                    oficina: { entrada: 0, saida: 0, pessoalNaOficina: 0 }
+                });
+                const enrich = (base) => ({
+                    pessoal: { ...base.pessoal, saldo: base.pessoal.entrada - base.pessoal.saida },
+                    oficina: { ...base.oficina, saldo: base.oficina.entrada - base.oficina.saida },
+                    geral: (base.pessoal.entrada + base.oficina.entrada) - (base.pessoal.saida + base.oficina.saida)
+                });
+                const todayItems = transactions.filter(t => t.date === todayKey);
+                const weekItems = transactions.filter(t => {
+                    if (!isIsoDate(t?.date)) return false;
+                    const dt = new Date(`${t.date}T12:00:00`);
+                    return dt >= monday && dt <= sunday;
+                });
+                const monthItems = transactions.filter(t => String(t.date || '').slice(0,7) === selectedMonth);
+                return {
+                    today: enrich(build(todayItems)),
+                    week: enrich(build(weekItems)),
+                    month: enrich(build(monthItems))
+                };
+            }, [transactions, selectedMonth]);
+
+            const tacticalPressure = useMemo(() => {
+                const currentMonthExpenses = monthlySummary.totalExpense;
+                const currentMonthIncome = monthlySummary.totalIncome;
+                const workshopNet = monthlySummary.wProfit;
+                const workshopPersonalDrain = monthlySummary.personalViaWorkshop;
+                const totalBudget = Number(budgets.personal || 0) + Number(budgets.workshop || 0);
+                const usagePct = totalBudget > 0 ? (currentMonthExpenses / totalBudget) : 0;
+                if (workshopNet < 0 || workshopPersonalDrain > Math.max(300, currentMonthIncome * 0.25)) {
+                    return { label: 'PRESSÃO MÁXIMA', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.30)', hint: 'Reduza retiradas e corte saídas da oficina imediatamente.' };
+                }
+                if (usagePct >= 1 || currentMonthExpenses > currentMonthIncome) {
+                    return { label: 'RISCO ALTO', color: '#f97316', bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.30)', hint: 'Suas saídas do mês já passaram da zona segura.' };
+                }
+                if (usagePct >= 0.8) {
+                    return { label: 'ATENÇÃO TÁTICA', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.30)', hint: 'Segure compras e acompanhe vencimentos de perto.' };
+                }
+                return { label: 'CAIXA CONTROLADO', color: '#22c55e', bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.30)', hint: 'Fluxo sob controle. Mantenha o ritmo.' };
+            }, [monthlySummary, budgets]);
+
             // ── Fixed bills due alert ──────────────────────────────────────────
             const isBillPaidForMonth = (bill, ym = currentYM) => Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(ym);
             const getFixedBillSyncId = (billId, ym = currentYM) => `fixed_bill_${billId}_${ym}`;
@@ -3145,8 +3205,8 @@
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
                         <div className="text-center flex-1">
-                            <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">ALCANTARA ARMEIRO BANK</p>
-                            <p className="text-[9px] text-gray-500 font-mono">GESTÃO FINANCEIRA INTEGRADA</p>
+                            <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">ALCANTARA BANK V6 BLACK</p>
+                            <p className="text-[9px] text-gray-500 font-mono">GESTÃO FINANCEIRA INTEGRADA • V6 BLACK</p>
                         </div>
                         <div className="relative">
                             {urgentCount > 0 && (
@@ -3198,13 +3258,14 @@
                     </div>
 
                     {/* ── Tab Nav ── */}
-                    <div className="grid grid-cols-3 gap-1.5 mb-4 sm:grid-cols-6">
+                    <div className="grid grid-cols-3 gap-1.5 mb-4 sm:grid-cols-7">
                         {[
                             ['dashboard','PAINEL','layout-dashboard'],
                             ['lancamentos','LANÇAR','plus-circle'],
                             ['extratos','EXTRATOS','list'],
                             ['fixas','FIXAS','calendar-clock'],
                             ['cartoes','CARTÕES','credit-card'],
+                            ['fechamento','CAIXA','shield'],
                             ['relatorios','RELATÓRIO','bar-chart-2']
                         ].map(([key,label,icon])=>(
                             <button key={key} onClick={()=>setTab(key)}
@@ -3255,6 +3316,81 @@
                                     <div className="mt-2">
                                         <ProgressBar value={monthlySummary.w.e} total={budgets.workshop} color="#d4af37" />
                                         <p className="text-[8px] text-gray-600 mt-1">{pct(monthlySummary.w.e,budgets.workshop)}% do orçamento</p>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div className="rounded-xl p-3" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V6 BLACK</p>
+                                        <p className="text-sm font-bold text-white mt-0.5">{tacticalPressure.label}</p>
+                                        <p className="text-[9px] text-gray-500 mt-1">{tacticalPressure.hint}</p>
+                                    </div>
+                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:'rgba(0,0,0,0.18)'}}>
+                                        <i data-lucide="shield" className="w-5 h-5" style={{color:tacticalPressure.color}}></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="os-card p-4 rounded-xl">
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="font-usarmy text-[#d4af37] text-xs">FECHAMENTO DE CAIXA</p>
+                                    <span className="text-[8px] text-gray-500 font-mono">HOJE • SEMANA • MÊS</span>
+                                </div>
+                                <div className="space-y-3">
+                                    {[
+                                        ['HOJE', periodStats.today],
+                                        ['SEMANA', periodStats.week],
+                                        ['MÊS', periodStats.month]
+                                    ].map(([label, stats]) => (
+                                        <div key={label} className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-[9px] font-usarmy text-white">{label}</p>
+                                                <p className={`font-usarmy text-xs ${stats.geral >= 0 ? 'text-green-400' : 'text-red-400'}`}>{money(stats.geral)}</p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                                <div className="rounded-lg p-2" style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.18)'}}>
+                                                    <p style={{color:'#818cf8'}} className="font-usarmy text-[8px] mb-1">PESSOAL</p>
+                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.pessoal.entrada)}</span></div>
+                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.pessoal.saida)}</span></div>
+                                                    <div className="flex justify-between text-white mt-1"><span>Saldo</span><span>{money(stats.pessoal.saldo)}</span></div>
+                                                </div>
+                                                <div className="rounded-lg p-2" style={{background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.18)'}}>
+                                                    <p style={{color:'#d4af37'}} className="font-usarmy text-[8px] mb-1">OFICINA</p>
+                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.oficina.entrada)}</span></div>
+                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.oficina.saida)}</span></div>
+                                                    <div className="flex justify-between text-white mt-1"><span>Saldo</span><span>{money(stats.oficina.saldo)}</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3">
+                                <div className="rounded-xl p-4" style={{background:'rgba(168,85,247,0.08)',border:'1px solid rgba(168,85,247,0.28)'}}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>RETIRADAS PESSOAIS DA OFICINA</p>
+                                            <p className="text-lg font-usarmy text-white mt-1">{money(monthlySummary.personalViaWorkshop)}</p>
+                                            <p className="text-[9px] text-gray-500 mt-1">Tudo que saiu da oficina para cobrir uso pessoal neste mês.</p>
+                                        </div>
+                                        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{background:'rgba(168,85,247,0.14)'}}>
+                                            <i data-lucide="arrow-down-left" className="w-5 h-5" style={{color:'#a855f7'}}></i>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
+                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>({...p, area:'oficina', type:'saida', category:'Retirada Pessoal', isPersonalExpense:true})); }}
+                                            className="p-2.5 rounded-xl border text-white font-usarmy"
+                                            style={{borderColor:'rgba(168,85,247,0.28)', background:'rgba(168,85,247,0.08)'}}>
+                                            NOVA RETIRADA
+                                        </button>
+                                        <button onClick={()=>{ setTab('extratos'); setFilterArea('oficina'); setFilterType('saida'); setSearch(''); }}
+                                            className="p-2.5 rounded-xl border border-white/10 text-gray-300 font-usarmy bg-black/20">
+                                            VER SAÍDAS OFICINA
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -3977,6 +4113,52 @@
                                     </div>
                                 </>
                             )}
+                        </div>
+                    )}
+
+
+                    {/* ════════════════ TAB: FECHAMENTO ════════════════ */}
+                    {tab === 'fechamento' && (
+                        <div className="space-y-4 animate-fadeIn">
+                            <MonthNav />
+                            <div className="grid grid-cols-1 gap-3">
+                                {[
+                                    ['FECHAMENTO DO DIA', periodStats.today],
+                                    ['FECHAMENTO DA SEMANA', periodStats.week],
+                                    ['FECHAMENTO DO MÊS', periodStats.month]
+                                ].map(([title, stats]) => (
+                                    <div key={title} className="os-card p-4 rounded-xl">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <p className="font-usarmy text-[#d4af37] text-xs">{title}</p>
+                                            <span className={`text-xs font-usarmy ${stats.geral >= 0 ? 'text-green-400' : 'text-red-400'}`}>{money(stats.geral)}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="rounded-xl p-3" style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.16)'}}>
+                                                <p className="text-[8px] font-usarmy mb-2" style={{color:'#818cf8'}}>PESSOAL</p>
+                                                <div className="space-y-1 text-[10px]">
+                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.pessoal.entrada)}</span></div>
+                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.pessoal.saida)}</span></div>
+                                                    <div className="flex justify-between text-white pt-1 border-t border-white/10"><span>Saldo</span><span>{money(stats.pessoal.saldo)}</span></div>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl p-3" style={{background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.16)'}}>
+                                                <p className="text-[8px] font-usarmy mb-2" style={{color:'#d4af37'}}>OFICINA</p>
+                                                <div className="space-y-1 text-[10px]">
+                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.oficina.entrada)}</span></div>
+                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.oficina.saida)}</span></div>
+                                                    <div className="flex justify-between text-white pt-1 border-t border-white/10"><span>Saldo</span><span>{money(stats.oficina.saldo)}</span></div>
+                                                    <div className="flex justify-between text-gray-400"><span>Pessoal na oficina</span><span style={{color:'#a855f7'}}>{money(stats.oficina.pessoalNaOficina)}</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="rounded-xl p-4" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
+                                <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>ANÁLISE AUTOMÁTICA V6 BLACK</p>
+                                <p className="text-sm font-bold text-white mt-1">{tacticalPressure.label}</p>
+                                <p className="text-[10px] text-gray-500 mt-2">{tacticalPressure.hint}</p>
+                            </div>
                         </div>
                     )}
 
@@ -6347,7 +6529,7 @@
                                     ></span>
                                     <span className="relative z-10 flex items-center justify-center gap-2">
                                         <i data-lucide="landmark" className="w-5 h-5"></i>
-                                        ALCANTARA ARMEIRO BANK
+                                        ALCANTARA BANK V6 BLACK
                                     </span>
                                 </button>
                                 <div className="grid grid-cols-2 gap-3 mt-3">
