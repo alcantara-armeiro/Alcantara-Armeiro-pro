@@ -2237,8 +2237,9 @@
             showToast('📄 PDF da assistência gerado!', 'success');
         };
 
-        // ========== ALCANTARA ARMEIRO BANK V11 — CLEAN BACKUP ==========
+        // ========== ALCANTARA ARMEIRO BANK V14 — COMPLETE ==========
         const AlcantaraBankIntegrated = ({ orders, onBack, onOpenOrder }) => {
+            const BANK_VERSION_LABEL = 'V14 PREMIUM';
             const now = new Date();
             const currentYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
@@ -2247,6 +2248,10 @@
             const [transactions,   setTransactions]   = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])));
             const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])));
             const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
+            const [withdrawalLimit, setWithdrawalLimit] = useState(() => {
+                const saved = Number(safeJsonParse(SafeStorage.getItem('alcantara_bank_withdrawal_limit'), 800));
+                return saved > 0 ? saved : 800;
+            });
             const [selectedMonth,  setSelectedMonth]  = useState(currentYM);
             const [filterArea,     setFilterArea]     = useState('todos');
             const [filterType,     setFilterType]     = useState('todos');
@@ -2286,7 +2291,7 @@
                 try {
                     setStorageBusy(true);
                     const payload = await buildFullAppBackup();
-                    downloadJsonFile(`alcantara_backup_total_v10_${new Date().toISOString().slice(0,10)}.json`, payload);
+                    downloadJsonFile(`alcantara_backup_total_v14_${new Date().toISOString().slice(0,10)}.json`, payload);
                     showToast('📦 Backup total do app gerado', 'success');
                 } catch (error) {
                     console.error(error);
@@ -2301,7 +2306,7 @@
                     setStorageBusy(true);
                     const payload = await buildFullAppBackup();
                     const shared = await shareJsonFile(
-                        `alcantara_backup_total_v10_${new Date().toISOString().slice(0,10)}.json`,
+                        `alcantara_backup_total_v14_${new Date().toISOString().slice(0,10)}.json`,
                         payload,
                         'Salvar backup total do app no Google Drive'
                     );
@@ -2401,6 +2406,7 @@
             useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions))); }, [transactions]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_withdrawal_limit', JSON.stringify(Number(withdrawalLimit) > 0 ? Number(withdrawalLimit) : 800)); }, [withdrawalLimit]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(asArray(cards)));                  }, [cards]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(asArray(cardEntries)));            }, [cardEntries]);
 
@@ -2693,6 +2699,77 @@
             }, [transactions, selectedMonth, filterArea, filterType, search]);
 
             // ── Cash-flow daily ────────────────────────────────────────────────
+
+            const monthlyWorkshopPersonalOut = useMemo(() => Number(monthlySummary.personalViaWorkshop || 0), [monthlySummary.personalViaWorkshop]);
+
+            const workshopWithdrawalRadar = useMemo(() => {
+                const spent = monthlyWorkshopPersonalOut;
+                const limit = Number(withdrawalLimit || 0) > 0 ? Number(withdrawalLimit) : 800;
+                const ratio = limit > 0 ? spent / limit : 0;
+                let status = 'CONTROLADA';
+                let tone = '#22c55e';
+                let hint = 'Retirada pessoal da oficina dentro do limite seguro.';
+                if (ratio >= 1) {
+                    status = 'ESTOUROU';
+                    tone = '#ef4444';
+                    hint = 'A retirada pessoal da oficina passou do limite mensal.';
+                } else if (ratio >= 0.75) {
+                    status = 'ATENÇÃO';
+                    tone = '#f59e0b';
+                    hint = 'Você está perto do limite de retirada pessoal da oficina.';
+                }
+                return { spent, limit, ratio, status, tone, hint, remaining: limit - spent };
+            }, [monthlyWorkshopPersonalOut, withdrawalLimit]);
+
+            const financialTraffic = useMemo(() => {
+                const monthBalance = monthlySummary.totalIncome - monthlySummary.totalExpense;
+                let color = '#22c55e';
+                let label = 'SAUDÁVEL';
+                let hint = 'Seu mês está controlado e ainda há margem de segurança.';
+                if (budgetRadar.totalRemaining < 0 || monthBalance < 0 || workshopWithdrawalRadar.ratio >= 1) {
+                    color = '#ef4444';
+                    label = 'RISCO';
+                    hint = 'Você já passou do limite ou está fechando o mês no negativo.';
+                } else if (budgetRadar.totalSpent >= budgetRadar.totalBudget * 0.7 || workshopWithdrawalRadar.ratio >= 0.75) {
+                    color = '#f59e0b';
+                    label = 'ATENÇÃO';
+                    hint = 'O orçamento do mês está apertando. Segure as saídas.';
+                }
+                return { color, label, hint, monthBalance };
+            }, [budgetRadar, workshopWithdrawalRadar, monthlySummary.totalIncome, monthlySummary.totalExpense]);
+
+            const dashboardIntelligence = useMemo(() => {
+                const daysInMonth = new Date(Number(selectedMonth.slice(0,4)), Number(selectedMonth.slice(5,7)), 0).getDate();
+                const selectedIsCurrent = selectedMonth === currentYM;
+                const currentDay = selectedIsCurrent ? now.getDate() : daysInMonth;
+                const remainingDays = Math.max(1, daysInMonth - currentDay + (selectedIsCurrent ? 0 : 1));
+                const safeBudgetLeft = Math.max(0, budgetRadar.totalRemaining);
+                const safeSpendToday = safeBudgetLeft / remainingDays;
+                const workshopGap = Math.max(0, monthlySummary.w.e - monthlySummary.w.i);
+                const personalGap = Math.max(0, monthlySummary.p.e - monthlySummary.p.i);
+                const workshopTarget = Math.max(0, workshopGap + Math.max(0, workshopWithdrawalRadar.spent - workshopWithdrawalRadar.limit));
+                return { remainingDays, safeSpendToday, workshopTarget, personalGap };
+            }, [budgetRadar.totalRemaining, monthlySummary.w.e, monthlySummary.w.i, monthlySummary.p.e, monthlySummary.p.i, workshopWithdrawalRadar, selectedMonth, currentYM, now]);
+
+            const monthlyExtractGroups = useMemo(() => {
+                const rows = transactions
+                    .filter(t => (!filterArea || filterArea === 'todos' || t.area === filterArea))
+                    .filter(t => (!filterType || filterType === 'todos' || t.type === filterType))
+                    .filter(t => {
+                        const q = String(search || '').trim().toLowerCase();
+                        if (!q) return true;
+                        return [t.description, t.category, t.area, t.type, t.obs].some(v => String(v || '').toLowerCase().includes(q));
+                    })
+                    .sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+                const grouped = {};
+                rows.forEach(item => {
+                    const ym = String(item.date || '').slice(0,7) || 'sem-data';
+                    if (!grouped[ym]) grouped[ym] = [];
+                    grouped[ym].push(item);
+                });
+                return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]));
+            }, [transactions, filterArea, filterType, search]);
+
             const cashFlowDays = useMemo(() => {
                 const [y,m] = selectedMonth.split('-').map(Number);
                 const daysInMonth = new Date(y, m, 0).getDate();
@@ -3731,13 +3808,61 @@
                             <div className="rounded-xl p-3" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V9</p>
+                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V14</p>
                                         <p className="text-sm font-bold text-white mt-0.5">{tacticalPressure.label}</p>
                                         <p className="text-[9px] text-gray-500 mt-1">{tacticalPressure.hint}</p>
                                     </div>
                                     <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:'rgba(0,0,0,0.18)'}}>
                                         <i data-lucide="shield" className="w-5 h-5" style={{color:tacticalPressure.color}}></i>
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl p-3" style={{background:'rgba(34,197,94,0.07)', border:'1px solid rgba(34,197,94,0.22)'}}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-[9px] font-usarmy text-green-400">SEMÁFORO FINANCEIRO</p>
+                                            <p className="text-sm font-bold text-white mt-0.5">{financialTraffic.label}</p>
+                                            <p className="text-[9px] text-gray-500 mt-1">{financialTraffic.hint}</p>
+                                        </div>
+                                        <i data-lucide="traffic-cone" className="w-5 h-5" style={{color:financialTraffic.color}}></i>
+                                    </div>
+                                </div>
+                                <div className="rounded-xl p-3" style={{background:'rgba(168,85,247,0.08)', border:'1px solid rgba(168,85,247,0.25)'}}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-[9px] font-usarmy" style={{color:workshopWithdrawalRadar.tone}}>RETIRADA DA OFICINA</p>
+                                            <p className="text-sm font-bold text-white mt-0.5">{workshopWithdrawalRadar.status}</p>
+                                            <p className="text-[9px] text-gray-500 mt-1">{workshopWithdrawalRadar.hint}</p>
+                                        </div>
+                                        <i data-lucide="arrow-down-left" className="w-5 h-5" style={{color:workshopWithdrawalRadar.tone}}></i>
+                                    </div>
+                                    <div className="mt-3">
+                                        <ProgressBar value={workshopWithdrawalRadar.spent} total={workshopWithdrawalRadar.limit} color={workshopWithdrawalRadar.tone} />
+                                        <div className="flex justify-between text-[8px] text-gray-500 mt-1">
+                                            <span>Usado {money(workshopWithdrawalRadar.spent)}</span>
+                                            <span>{workshopWithdrawalRadar.remaining >= 0 ? `Folga ${money(workshopWithdrawalRadar.remaining)}` : `Estouro ${money(Math.abs(workshopWithdrawalRadar.remaining))}`}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div className="os-card p-4 rounded-xl">
+                                    <p className="text-[8px] text-gray-500 font-mono mb-1">PODE GASTAR HOJE</p>
+                                    <p className="font-usarmy text-green-400 text-sm">{money(dashboardIntelligence.safeSpendToday)}</p>
+                                    <p className="text-[9px] text-gray-500 mt-2">Distribuição segura do orçamento para os próximos {dashboardIntelligence.remainingDays} dia(s).</p>
+                                </div>
+                                <div className="os-card p-4 rounded-xl">
+                                    <p className="text-[8px] text-gray-500 font-mono mb-1">GERAR NA OFICINA</p>
+                                    <p className="font-usarmy text-[#d4af37] text-sm">{money(dashboardIntelligence.workshopTarget)}</p>
+                                    <p className="text-[9px] text-gray-500 mt-2">Meta para cobrir o caixa da oficina e segurar retiradas acima do limite.</p>
+                                </div>
+                                <div className="os-card p-4 rounded-xl">
+                                    <p className="text-[8px] text-gray-500 font-mono mb-1">PRESSÃO PESSOAL</p>
+                                    <p className={`font-usarmy text-sm ${dashboardIntelligence.personalGap > 0 ? 'text-red-400' : 'text-green-400'}`}>{money(dashboardIntelligence.personalGap)}</p>
+                                    <p className="text-[9px] text-gray-500 mt-2">Quanto o pessoal ainda precisa ajustar para fechar o mês sem aperto.</p>
                                 </div>
                             </div>
 
@@ -3881,6 +4006,26 @@
                                         <div className="flex justify-between text-[8px] text-gray-500 mt-1">
                                             <span>{pct(budgetRadar.totalSpent, budgetRadar.totalBudget)}% usado</span>
                                             <span className={budgetRadar.totalRemaining >= 0 ? 'text-green-400' : 'text-red-400'}>{budgetRadar.totalRemaining >= 0 ? 'FOLGA' : 'ESTOURO'} {money(Math.abs(budgetRadar.totalRemaining))}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl p-3 mb-3" style={{background:'rgba(168,85,247,0.07)', border:'1px solid rgba(168,85,247,0.22)'}}>
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                        <div>
+                                            <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>LIMITE DE RETIRADA DA OFICINA</p>
+                                            <p className="text-[8px] text-gray-500 mt-1">Controla retiradas e uso pessoal saindo do caixa da oficina.</p>
+                                        </div>
+                                        <p className="font-usarmy text-[10px]" style={{color:workshopWithdrawalRadar.tone}}>{workshopWithdrawalRadar.status}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                        <div>
+                                            <label className="text-[8px] text-gray-500 font-mono block mb-1">LIMITE MENSAL</label>
+                                            <input type="number" inputMode="decimal" value={withdrawalLimit} onChange={e=>setWithdrawalLimit(Math.max(0, Number(e.target.value||0)))} className="w-full rounded-xl px-3 py-3" />
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[8px] text-gray-500 font-mono">RETIRADO NO MÊS</p>
+                                            <p className="font-usarmy text-sm text-white mt-1">{money(workshopWithdrawalRadar.spent)}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -4075,6 +4220,34 @@
                             </div>
 
                             {/* Transaction list */}
+
+                            <div className="os-card p-4 rounded-xl mb-3">
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="font-usarmy text-[#d4af37] text-xs">BLOCOS MENSAIS DO EXTRATO</p>
+                                    <span className="text-[8px] text-gray-500 font-mono">AGRUPADO POR MÊS</span>
+                                </div>
+                                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                    {monthlyExtractGroups.slice(0, 6).map(([ym, items]) => {
+                                        const totalIn = items.filter(i=>i.type==='entrada').reduce((s,i)=>s+Number(i.value||0),0);
+                                        const totalOut = items.filter(i=>i.type==='saida').reduce((s,i)=>s+Number(i.value||0),0);
+                                        return (
+                                            <button key={ym} onClick={()=>setSelectedMonth(ym)} className="w-full text-left rounded-xl p-3 border border-white/10 bg-white/5">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="font-usarmy text-white text-[11px]">{monthLabel(ym).toUpperCase()}</p>
+                                                        <p className="text-[8px] text-gray-500 mt-1">{items.length} movimento(s)</p>
+                                                    </div>
+                                                    <div className="text-right text-[8px]">
+                                                        <p className="text-green-400">↑ {money(totalIn)}</p>
+                                                        <p className="text-red-400 mt-1">↓ {money(totalOut)}</p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 {filteredTransactions.length === 0 && (
                                     <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">SEM LANÇAMENTOS</div>
@@ -4614,7 +4787,7 @@
                                 ))}
                             </div>
                             <div className="rounded-xl p-4" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
-                                <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>ANÁLISE AUTOMÁTICA V9</p>
+                                <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>ANÁLISE AUTOMÁTICA V14</p>
                                 <p className="text-sm font-bold text-white mt-1">{tacticalPressure.label}</p>
                                 <p className="text-[10px] text-gray-500 mt-2">{tacticalPressure.hint}</p>
                             </div>
@@ -7770,7 +7943,7 @@
                         <button type="button" onClick={onBack} className="btn-icon text-[#d4af37]">
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
-                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS V13</h2>
+                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS V14</h2>
                         <div className="w-10"></div>
                     </div>
 
