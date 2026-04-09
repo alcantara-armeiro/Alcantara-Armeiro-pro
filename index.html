@@ -536,6 +536,207 @@
     <div id="toast-container"></div>
     <div id="install-container"></div>
 
+
+    <script>
+        // ===== STORAGE BRIDGE V11 CLEAN BACKUP =====
+        const SafeStorage = (() => {
+            const DB_NAME = 'alcantara_pro_storage_v8';
+            const STORE = 'kv';
+            const VERSION = 1;
+            const MIGRATION_FLAG = '__alcantara_idb_migrated_v8__';
+            const memory = {};
+            let dbPromise = null;
+            let readyResolve;
+            const ready = new Promise(resolve => { readyResolve = resolve; });
+
+            const cloneValue = (v) => v === undefined ? null : String(v);
+            const keysToMirror = [
+                'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
+                'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
+                'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
+                'alcantara_auth','alcantara_equipment_history'
+            ];
+
+            function openDb() {
+                if (dbPromise) return dbPromise;
+                dbPromise = new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, VERSION);
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error || new Error('Falha ao abrir IndexedDB'));
+                });
+                return dbPromise;
+            }
+
+            async function idbSetItem(key, value) {
+                const db = await openDb();
+                return new Promise((resolve, reject) => {
+                    const tr = db.transaction(STORE, 'readwrite');
+                    const st = tr.objectStore(STORE);
+                    const req = st.put({ key, value: cloneValue(value), updatedAt: Date.now() });
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            async function idbRemoveItem(key) {
+                const db = await openDb();
+                return new Promise((resolve, reject) => {
+                    const tr = db.transaction(STORE, 'readwrite');
+                    const st = tr.objectStore(STORE);
+                    const req = st.delete(key);
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            async function bootstrap() {
+                if (!('indexedDB' in window)) {
+                    console.warn('IndexedDB indisponível; usando localStorage padrão.');
+                    readyResolve();
+                    return;
+                }
+                try {
+                    const db = await openDb();
+                    const rows = await new Promise((resolve, reject) => {
+                        const tr = db.transaction(STORE, 'readonly');
+                        const st = tr.objectStore(STORE);
+                        const req = st.getAll();
+                        req.onsuccess = () => resolve(req.result || []);
+                        req.onerror = () => reject(req.error);
+                    });
+
+                    rows.forEach(row => {
+                        if (!row || !row.key) return;
+                        memory[row.key] = cloneValue(row.value);
+                        if (row.value !== null && row.value !== undefined) {
+                            try { localStorage.setItem(row.key, cloneValue(row.value)); } catch (_) {}
+                        }
+                    });
+
+                    const alreadyMigrated = localStorage.getItem(MIGRATION_FLAG) === 'true' || memory[MIGRATION_FLAG] === 'true';
+                    if (!alreadyMigrated) {
+                        const pending = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i);
+                            if (!key) continue;
+                            if (!keysToMirror.includes(key) && !key.startsWith('alcantara_') && !key.startsWith('gf_')) continue;
+                            const value = localStorage.getItem(key);
+                            memory[key] = cloneValue(value);
+                            pending.push(idbSetItem(key, value));
+                        }
+                        pending.push(idbSetItem(MIGRATION_FLAG, 'true'));
+                        memory[MIGRATION_FLAG] = 'true';
+                        await Promise.allSettled(pending);
+                        try { localStorage.setItem(MIGRATION_FLAG, 'true'); } catch (_) {}
+                    }
+                } catch (error) {
+                    console.warn('Falha no bootstrap do IndexedDB:', error);
+                } finally {
+                    readyResolve();
+                    window.dispatchEvent(new CustomEvent('alcantara-storage-ready'));
+                }
+            }
+
+            bootstrap();
+
+            return {
+                ready,
+                getItem(key) {
+                    if (Object.prototype.hasOwnProperty.call(memory, key)) return memory[key];
+                    const raw = localStorage.getItem(key);
+                    if (raw !== null && raw !== undefined) memory[key] = cloneValue(raw);
+                    return raw;
+                },
+                setItem(key, value) {
+                    const normalized = cloneValue(value);
+                    memory[key] = normalized;
+                    localStorage.setItem(key, normalized);
+                    if ('indexedDB' in window) idbSetItem(key, normalized).catch(err => console.warn('Falha ao persistir no IndexedDB:', err));
+                },
+                removeItem(key) {
+                    delete memory[key];
+                    localStorage.removeItem(key);
+                    if ('indexedDB' in window) idbRemoveItem(key).catch(err => console.warn('Falha ao remover do IndexedDB:', err));
+                },
+                async exportAll() {
+                    const db = await openDb();
+                    return new Promise((resolve, reject) => {
+                        const tr = db.transaction(STORE, 'readonly');
+                        const st = tr.objectStore(STORE);
+                        const req = st.getAll();
+                        req.onsuccess = () => resolve(req.result || []);
+                        req.onerror = () => reject(req.error);
+                    });
+                },
+                async estimateUsage() {
+                    let localBytes = 0;
+                    try {
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i);
+                            const val = localStorage.getItem(key) || '';
+                            localBytes += (String(key).length + String(val).length) * 2;
+                        }
+                    } catch (_) {}
+                    let idbBytes = 0;
+                    let rows = [];
+                    try {
+                        rows = await this.exportAll();
+                        rows.forEach(row => {
+                            const key = String(row?.key || '');
+                            const val = String(row?.value || '');
+                            idbBytes += (key.length + val.length) * 2;
+                        });
+                    } catch (_) {}
+                    let quota = 0, usage = 0;
+                    try {
+                        if (navigator.storage && navigator.storage.estimate) {
+                            const est = await navigator.storage.estimate();
+                            quota = Number(est?.quota || 0);
+                            usage = Number(est?.usage || 0);
+                        }
+                    } catch (_) {}
+                    return { localBytes, idbBytes, quota, usage, rows: rows.length };
+                },
+                async compactData() {
+                    const keys = [
+                        'alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_cards','alcantara_bank_card_entries',
+                        'alcantara_bank_budgets','alcantara_os','alcantara_catalog','alcantara_products',
+                        'gf_fornecedores','gf_pecas','alcantara_assistencias_registros','alcantara_customer_notes',
+                        'alcantara_equipment_history'
+                    ];
+                    let cleaned = 0;
+                    for (const key of keys) {
+                        const raw = this.getItem(key);
+                        if (raw === null || raw === undefined || raw === '') continue;
+                        try {
+                            const parsed = JSON.parse(raw);
+                            if (Array.isArray(parsed)) {
+                                const compacted = parsed.filter(Boolean);
+                                this.setItem(key, JSON.stringify(compacted));
+                                cleaned += Math.max(0, parsed.length - compacted.length);
+                            } else if (parsed && typeof parsed === 'object') {
+                                this.setItem(key, JSON.stringify(parsed));
+                            }
+                        } catch (_) {}
+                    }
+                    return { cleaned };
+                },
+                async restoreRows(rows) {
+                    if (!Array.isArray(rows)) throw new Error('Backup inválido');
+                    for (const row of rows) {
+                        if (!row || !row.key) continue;
+                        this.setItem(String(row.key), cloneValue(row.value));
+                    }
+                    return true;
+                }
+            };
+        })();
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
@@ -548,6 +749,74 @@
                 return fallbackValue;
             }
         };
+        const formatBytes = (bytes = 0) => {
+            const value = Number(bytes || 0);
+            if (!value) return '0 B';
+            const units = ['B','KB','MB','GB'];
+            let i = 0;
+            let out = value;
+            while (out >= 1024 && i < units.length - 1) { out /= 1024; i += 1; }
+            return `${out.toFixed(out >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+        };
+
+        const downloadJsonFile = (filename, payload) => {
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1200);
+        };
+
+        const APP_BACKUP_KEYS = [
+            'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
+            'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
+            'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
+            'alcantara_auth','alcantara_equipment_history'
+        ];
+
+        const buildFullAppBackup = async () => {
+            const indexedRows = await SafeStorage.exportAll().catch(() => []);
+            const localSnapshot = {};
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key) continue;
+                    if (APP_BACKUP_KEYS.includes(key) || key.startsWith('alcantara_') || key.startsWith('gf_') || key.startsWith('__alcantara_')) {
+                        localSnapshot[key] = localStorage.getItem(key);
+                    }
+                }
+            } catch (_) {}
+            return {
+                version: 'V12 UNIFICADO',
+                exportedAt: new Date().toISOString(),
+                app: 'Alcantara Armeiro',
+                mode: 'full_system_backup',
+                localSnapshot,
+                indexedRows,
+                meta: {
+                    totalLocalKeys: Object.keys(localSnapshot).length,
+                    totalIndexedRows: Array.isArray(indexedRows) ? indexedRows.length : 0
+                }
+            };
+        };
+
+        const shareJsonFile = async (filename, payload, shareText = 'Backup do app') => {
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const file = new File([blob], filename, { type: 'application/json' });
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'Backup Alcantara Armeiro',
+                    text: shareText
+                });
+                return true;
+            }
+            downloadJsonFile(filename, payload);
+            return false;
+        };
+
 
         const isoToday = () => new Date().toISOString().slice(0,10);
         const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -592,19 +861,19 @@
             switch (action.type) {
                 case 'LOAD':
                     return {
-                        orders:   asArray(safeJsonParse(localStorage.getItem('alcantara_os'), [])),
-                        catalog:  asArray(safeJsonParse(localStorage.getItem('alcantara_catalog'), [])),
-                        products: asArray(safeJsonParse(localStorage.getItem('alcantara_products'), [])),
+                        orders:   asArray(safeJsonParse(SafeStorage.getItem('alcantara_os'), [])),
+                        catalog:  asArray(safeJsonParse(SafeStorage.getItem('alcantara_catalog'), [])),
+                        products: asArray(safeJsonParse(SafeStorage.getItem('alcantara_products'), [])),
                     };
                 case 'SAVE_ORDER':
                     orders = [...state.orders];
                     const idx = orders.findIndex(o => o.id === action.order.id);
                     if (idx !== -1) orders[idx] = action.order; else orders.unshift(action.order);
-                    localStorage.setItem('alcantara_os', JSON.stringify(orders));
+                    SafeStorage.setItem('alcantara_os', JSON.stringify(orders));
                     return { ...state, orders };
                 case 'DELETE_ORDER':
                     orders = state.orders.filter(o => o.id !== action.id);
-                    localStorage.setItem('alcantara_os', JSON.stringify(orders));
+                    SafeStorage.setItem('alcantara_os', JSON.stringify(orders));
                     return { ...state, orders };
                 case 'SAVE_CATALOG_ITEM':
                     catalog = [...state.catalog];
@@ -612,17 +881,17 @@
                         c.name.toLowerCase() === action.item.name.toLowerCase() && c.type === action.item.type);
                     if (!exists) {
                         catalog.push({ ...action.item, id: Date.now().toString() });
-                        localStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
+                        SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
                         return { ...state, catalog };
                     }
                     return state;
                 case 'DELETE_CATALOG_ITEM':
                     catalog = state.catalog.filter(i => i.id !== action.id);
-                    localStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
+                    SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
                     return { ...state, catalog };
                 case 'UPDATE_CATALOG_ITEM':
                     catalog = state.catalog.map(i => i.id === action.item.id ? action.item : i);
-                    localStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
+                    SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
                     return { ...state, catalog };
                 case 'SAVE_PRODUCT':
                     products = [...state.products];
@@ -631,7 +900,7 @@
                         products.push({ ...action.product, id: Date.now().toString(),
                             stock: parseInt(action.product.stock) || 0,
                             price: parseFloat(action.product.price) || 0 });
-                        localStorage.setItem('alcantara_products', JSON.stringify(products));
+                        SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                         return { ...state, products };
                     }
                     return state;
@@ -639,11 +908,11 @@
                     products = state.products.map(p => p.id === action.product.id
                         ? { ...action.product, stock: parseInt(action.product.stock)||0, price: parseFloat(action.product.price)||0 }
                         : p);
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
                 case 'DELETE_PRODUCT':
                     products = state.products.filter(p => p.id !== action.id);
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
                 case 'RESERVE_STOCK': {
                     products = [...state.products];
@@ -652,7 +921,7 @@
                     const cur = parseInt(products[pi].stock) || 0;
                     if (cur < action.qty) return state;
                     products[pi] = { ...products[pi], stock: cur - action.qty };
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
                 }
                 case 'RELEASE_STOCK': {
@@ -660,7 +929,7 @@
                     const ri = products.findIndex(p => p.id === action.productId);
                     if (ri === -1) return state;
                     products[ri] = { ...products[ri], stock: (parseInt(products[ri].stock)||0) + action.qty };
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
                 }
                 default:
@@ -670,9 +939,9 @@
 
         const DbProvider = ({ children }) => {
             const [state, dispatch] = React.useReducer(dbReducer, null, () => ({
-                orders:   asArray(safeJsonParse(localStorage.getItem('alcantara_os'), [])),
-                catalog:  asArray(safeJsonParse(localStorage.getItem('alcantara_catalog'), [])),
-                products: asArray(safeJsonParse(localStorage.getItem('alcantara_products'), [])),
+                orders:   asArray(safeJsonParse(SafeStorage.getItem('alcantara_os'), [])),
+                catalog:  asArray(safeJsonParse(SafeStorage.getItem('alcantara_catalog'), [])),
+                products: asArray(safeJsonParse(SafeStorage.getItem('alcantara_products'), [])),
             }));
             return (
                 <DbContext.Provider value={{ state, dispatch }}>
@@ -896,19 +1165,19 @@
 
         // ========== BANCO DE DADOS ==========
         const db = {
-            getOrders: () => asArray(safeJsonParse(localStorage.getItem('alcantara_os'), [])),
+            getOrders: () => asArray(safeJsonParse(SafeStorage.getItem('alcantara_os'), [])),
             saveOrder: (order) => {
                 const orders = db.getOrders();
                 const idx = orders.findIndex(o => o.id === order.id);
                 if (idx !== -1) orders[idx] = order; 
                 else orders.unshift(order);
-                localStorage.setItem('alcantara_os', JSON.stringify(orders));
+                SafeStorage.setItem('alcantara_os', JSON.stringify(orders));
             },
             deleteOrder: (id) => {
                 const orders = db.getOrders().filter(o => o.id !== id);
-                localStorage.setItem('alcantara_os', JSON.stringify(orders));
+                SafeStorage.setItem('alcantara_os', JSON.stringify(orders));
             },
-            getCatalog: () => asArray(safeJsonParse(localStorage.getItem('alcantara_catalog'), [])),
+            getCatalog: () => asArray(safeJsonParse(SafeStorage.getItem('alcantara_catalog'), [])),
             saveCatalogItem: (item) => {
                 const catalog = db.getCatalog();
                 const exists = catalog.find(c => 
@@ -917,14 +1186,14 @@
                 );
                 if (!exists) {
                     catalog.push({ ...item, id: Date.now().toString() });
-                    localStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
+                    SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
                 }
             },
             deleteCatalogItem: (id) => {
                 const catalog = db.getCatalog().filter(i => i.id !== id);
-                localStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
+                SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
             },
-            getProducts: () => asArray(safeJsonParse(localStorage.getItem('alcantara_products'), [])),
+            getProducts: () => asArray(safeJsonParse(SafeStorage.getItem('alcantara_products'), [])),
             saveProduct: (product) => {
                 const products = db.getProducts();
                 const exists = products.find(p => 
@@ -937,7 +1206,7 @@
                         stock: parseInt(product.stock) || 0,
                         price: parseFloat(product.price) || 0
                     });
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
             },
             updateProduct: (updatedProduct) => {
@@ -949,7 +1218,7 @@
                         stock: parseInt(updatedProduct.stock) || 0,
                         price: parseFloat(updatedProduct.price) || 0
                     };
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
             },
             checkAndReserveStock: (productId, requestedQuantity) => {
@@ -967,7 +1236,7 @@
                 }
 
                 products[idx].stock = currentStock - requestedQuantity;
-                localStorage.setItem('alcantara_products', JSON.stringify(products));
+                SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 return { success: true, newStock: products[idx].stock };
             },
             releaseStock: (productId, quantity) => {
@@ -975,7 +1244,7 @@
                 const idx = products.findIndex(p => p.id === productId);
                 if (idx !== -1) {
                     products[idx].stock = (parseInt(products[idx].stock) || 0) + quantity;
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return products[idx].stock;
                 }
                 return null;
@@ -986,30 +1255,30 @@
                 if (idx !== -1) {
                     products[idx].stock = parseInt(products[idx].stock || 0) + quantity;
                     if (products[idx].stock < 0) products[idx].stock = 0;
-                    localStorage.setItem('alcantara_products', JSON.stringify(products));
+                    SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return products[idx].stock;
                 }
                 return null;
             },
             deleteProduct: (id) => {
                 const products = db.getProducts().filter(p => p.id !== id);
-                localStorage.setItem('alcantara_products', JSON.stringify(products));
+                SafeStorage.setItem('alcantara_products', JSON.stringify(products));
             },
             exportBackup: () => {
                 const data = { 
                     orders: db.getOrders(), 
                     catalog: db.getCatalog(),
                     products: db.getProducts(),
-                    bankTransactions: asArray(safeJsonParse(localStorage.getItem('alcantara_bank_transactions'), [])),
-                    bankFixedBills: normalizeFixedBills(safeJsonParse(localStorage.getItem('alcantara_bank_fixed'), [])),
-                    bankBudgets: normalizeBudgets(safeJsonParse(localStorage.getItem('alcantara_bank_budgets'), { personal: 2500, workshop: 1200 })),
-                    suppliers: asArray(safeJsonParse(localStorage.getItem('gf_fornecedores'), [])),
-                    assistencias: asArray(safeJsonParse(localStorage.getItem('alcantara_assistencias_registros'), [])),
-                    parts: asArray(safeJsonParse(localStorage.getItem('gf_pecas'), [])),
+                    bankTransactions: asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])),
+                    bankFixedBills: normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])),
+                    bankBudgets: normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal: 2500, workshop: 1200 })),
+                    suppliers: asArray(safeJsonParse(SafeStorage.getItem('gf_fornecedores'), [])),
+                    assistencias: asArray(safeJsonParse(SafeStorage.getItem('alcantara_assistencias_registros'), [])),
+                    parts: asArray(safeJsonParse(SafeStorage.getItem('gf_pecas'), [])),
                     equipmentHistory: getEquipmentHistoryRecords(),
-                    defaultMargin: localStorage.getItem('gf_margem') || '200',
+                    defaultMargin: SafeStorage.getItem('gf_margem') || '200',
                     exportDate: new Date().toISOString(),
-                    version: '6.2'
+                    version: '7.0'
                 };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                 const a = document.createElement('a');
@@ -1029,17 +1298,17 @@
                                 reject('Arquivo de backup inválido: orders não encontrado');
                                 return;
                             }
-                            if (data.catalog) localStorage.setItem('alcantara_catalog', JSON.stringify(asArray(data.catalog)));
-                            if (data.products) localStorage.setItem('alcantara_products', JSON.stringify(asArray(data.products)));
-                            if (data.bankTransactions) localStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(data.bankTransactions)));
-                            if (data.bankFixedBills) localStorage.setItem('alcantara_bank_fixed', JSON.stringify(normalizeFixedBills(data.bankFixedBills)));
-                            if (data.bankBudgets) localStorage.setItem('alcantara_bank_budgets', JSON.stringify(normalizeBudgets(data.bankBudgets)));
-                            if (data.suppliers) localStorage.setItem('gf_fornecedores', JSON.stringify(asArray(data.suppliers)));
-                            if (data.assistencias) localStorage.setItem('alcantara_assistencias_registros', JSON.stringify(asArray(data.assistencias)));
-                            if (data.parts) localStorage.setItem('gf_pecas', JSON.stringify(asArray(data.parts)));
+                            if (data.catalog) SafeStorage.setItem('alcantara_catalog', JSON.stringify(asArray(data.catalog)));
+                            if (data.products) SafeStorage.setItem('alcantara_products', JSON.stringify(asArray(data.products)));
+                            if (data.bankTransactions) SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(data.bankTransactions)));
+                            if (data.bankFixedBills) SafeStorage.setItem('alcantara_bank_fixed', JSON.stringify(normalizeFixedBills(data.bankFixedBills)));
+                            if (data.bankBudgets) SafeStorage.setItem('alcantara_bank_budgets', JSON.stringify(normalizeBudgets(data.bankBudgets)));
+                            if (data.suppliers) SafeStorage.setItem('gf_fornecedores', JSON.stringify(asArray(data.suppliers)));
+                            if (data.assistencias) SafeStorage.setItem('alcantara_assistencias_registros', JSON.stringify(asArray(data.assistencias)));
+                            if (data.parts) SafeStorage.setItem('gf_pecas', JSON.stringify(asArray(data.parts)));
                             if (data.equipmentHistory) saveEquipmentHistoryRecords(asArray(data.equipmentHistory));
-                            if (data.defaultMargin !== undefined) localStorage.setItem('gf_margem', String(data.defaultMargin));
-                            localStorage.setItem('alcantara_os', JSON.stringify(asArray(data.orders)));
+                            if (data.defaultMargin !== undefined) SafeStorage.setItem('gf_margem', String(data.defaultMargin));
+                            SafeStorage.setItem('alcantara_os', JSON.stringify(asArray(data.orders)));
                             resolve(data);
                         } catch (err) { 
                             reject('Erro ao importar arquivo: ' + err.message);
@@ -1121,7 +1390,7 @@
         };
 
         const getCustomerNotesMap = () => {
-            const raw = safeJsonParse(localStorage.getItem(CUSTOMER_NOTES_KEY), {});
+            const raw = safeJsonParse(SafeStorage.getItem(CUSTOMER_NOTES_KEY), {});
             return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
         };
 
@@ -1132,7 +1401,7 @@
             const cleaned = String(note || '').trim();
             if (cleaned) notesMap[key] = cleaned;
             else delete notesMap[key];
-            localStorage.setItem(CUSTOMER_NOTES_KEY, JSON.stringify(notesMap));
+            SafeStorage.setItem(CUSTOMER_NOTES_KEY, JSON.stringify(notesMap));
         };
 
         const getCustomerHistorySnapshot = (orders, customerName, currentOrderId = null) => {
@@ -1294,7 +1563,7 @@
 
         const EQUIPMENT_HISTORY_KEY = 'alcantara_equipment_history';
 
-        const getEquipmentHistoryRecords = () => asArray(safeJsonParse(localStorage.getItem(EQUIPMENT_HISTORY_KEY), []))
+        const getEquipmentHistoryRecords = () => asArray(safeJsonParse(SafeStorage.getItem(EQUIPMENT_HISTORY_KEY), []))
             .filter(item => item && typeof item === 'object')
             .map((item, index) => ({
                 id: String(item.id || `eq_${Date.now()}_${index}`),
@@ -1309,7 +1578,7 @@
             }));
 
         const saveEquipmentHistoryRecords = (records) => {
-            localStorage.setItem(EQUIPMENT_HISTORY_KEY, JSON.stringify(asArray(records)));
+            SafeStorage.setItem(EQUIPMENT_HISTORY_KEY, JSON.stringify(asArray(records)));
         };
 
         const getEquipmentHistorySummary = (records) => {
@@ -1968,16 +2237,16 @@
             showToast('📄 PDF da assistência gerado!', 'success');
         };
 
-        // ========== ALCANTARA ARMEIRO BANK — SENIOR EDITION ==========
+        // ========== ALCANTARA ARMEIRO BANK V11 — CLEAN BACKUP ==========
         const AlcantaraBankIntegrated = ({ orders, onBack, onOpenOrder }) => {
             const now = new Date();
             const currentYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
             // ── State ──────────────────────────────────────────────────────────
-            const [tab,            setTab]            = useState('dashboard');
-            const [transactions,   setTransactions]   = useState(() => asArray(safeJsonParse(localStorage.getItem('alcantara_bank_transactions'), [])));
-            const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(localStorage.getItem('alcantara_bank_fixed'), [])));
-            const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(localStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
+            const [tab,            setTab]            = useState(() => localStorage.getItem('alcantara_bank_quick_tab') || 'dashboard');
+            const [transactions,   setTransactions]   = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])));
+            const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])));
+            const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
             const [selectedMonth,  setSelectedMonth]  = useState(currentYM);
             const [filterArea,     setFilterArea]     = useState('todos');
             const [filterType,     setFilterType]     = useState('todos');
@@ -1994,15 +2263,105 @@
             };
             const [form, setForm] = useState(emptyForm);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
-            const [cards,          setCards]          = useState(() => asArray(safeJsonParse(localStorage.getItem('alcantara_bank_cards'), [])));
-            const [cardEntries,    setCardEntries]    = useState(() => asArray(safeJsonParse(localStorage.getItem('alcantara_bank_card_entries'), [])));
+            const [cards,          setCards]          = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
+            const [cardEntries,    setCardEntries]    = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
             const [selectedCardId, setSelectedCardId] = useState(null);
+
+            useEffect(() => {
+                const quickTab = localStorage.getItem('alcantara_bank_quick_tab');
+                if (quickTab) {
+                    setTab(quickTab === 'storage' ? 'dashboard' : quickTab);
+                    localStorage.removeItem('alcantara_bank_quick_tab');
+                }
+            }, []);
             const [showCardForm,   setShowCardForm]   = useState(false);
             const [editingCardId,  setEditingCardId]  = useState(null);
             const [editingCardEntryId, setEditingCardEntryId] = useState(null);
             const [showCardEntryForm, setShowCardEntryForm] = useState(false);
             const [confirmDeleteCard, setConfirmDeleteCard] = useState(null);
             const [confirmDeleteCardEntry, setConfirmDeleteCardEntry] = useState(null);
+            const [storageBusy, setStorageBusy] = useState(false);
+
+            const handleStorageBackup = async () => {
+                try {
+                    setStorageBusy(true);
+                    const payload = await buildFullAppBackup();
+                    downloadJsonFile(`alcantara_backup_total_v10_${new Date().toISOString().slice(0,10)}.json`, payload);
+                    showToast('📦 Backup total do app gerado', 'success');
+                } catch (error) {
+                    console.error(error);
+                    showToast('Erro ao gerar backup total', 'error');
+                } finally {
+                    setStorageBusy(false);
+                }
+            };
+
+            const handleStorageBackupDrive = async () => {
+                try {
+                    setStorageBusy(true);
+                    const payload = await buildFullAppBackup();
+                    const shared = await shareJsonFile(
+                        `alcantara_backup_total_v10_${new Date().toISOString().slice(0,10)}.json`,
+                        payload,
+                        'Salvar backup total do app no Google Drive'
+                    );
+                    showToast(shared ? '☁️ Compartilhe no Google Drive para salvar o backup' : '📦 Download do backup total gerado', shared ? 'success' : 'warning');
+                } catch (error) {
+                    console.error(error);
+                    showToast('Não foi possível abrir o compartilhamento do Google Drive', 'error');
+                } finally {
+                    setStorageBusy(false);
+                }
+            };
+
+            const handleStorageRestore = async (event) => {
+                const file = event?.target?.files?.[0];
+                if (!file) return;
+                try {
+                    setStorageBusy(true);
+                    const raw = await file.text();
+                    const parsed = JSON.parse(raw);
+                    const localSnapshot = parsed?.localSnapshot && typeof parsed.localSnapshot === 'object' ? parsed.localSnapshot : null;
+                    const rows = Array.isArray(parsed) ? parsed : parsed?.indexedRows || parsed?.rows;
+
+                    if (!localSnapshot && !Array.isArray(rows)) {
+                        throw new Error('Backup inválido');
+                    }
+
+                    if (localSnapshot) {
+                        Object.entries(localSnapshot).forEach(([key, value]) => {
+                            if (!key) return;
+                            if (value === null || value === undefined) SafeStorage.removeItem(key);
+                            else SafeStorage.setItem(key, String(value));
+                        });
+                    }
+
+                    if (Array.isArray(rows)) {
+                        await SafeStorage.restoreRows(rows);
+                    }
+
+                    showToast('♻️ Backup total restaurado', 'success');
+                    setTimeout(() => window.location.reload(), 700);
+                } catch (error) {
+                    console.error(error);
+                    showToast('Backup inválido para restauração', 'error');
+                } finally {
+                    if (event?.target) event.target.value = '';
+                    setStorageBusy(false);
+                }
+            };
+
+            const handleStorageCompact = async () => {
+                try {
+                    setStorageBusy(true);
+                    const result = await SafeStorage.compactData();
+                    showToast(`🧹 Limpeza inteligente concluída${result?.cleaned ? ` • ${result.cleaned} itens ajustados` : ''}`, 'success');
+                } catch (error) {
+                    showToast('Erro na limpeza inteligente', 'error');
+                } finally {
+                    setStorageBusy(false);
+                }
+            };
 
             // ── Categories ────────────────────────────────────────────────────
             const CATS = {
@@ -2039,11 +2398,11 @@
             };
 
             // ── Persist ────────────────────────────────────────────────────────
-            useEffect(() => { localStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions))); }, [transactions]);
-            useEffect(() => { localStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
-            useEffect(() => { localStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
-            useEffect(() => { localStorage.setItem('alcantara_bank_cards',        JSON.stringify(asArray(cards)));                  }, [cards]);
-            useEffect(() => { localStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(asArray(cardEntries)));            }, [cardEntries]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions))); }, [transactions]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(asArray(cards)));                  }, [cards]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(asArray(cardEntries)));            }, [cardEntries]);
 
             // ── Icon refresh ───────────────────────────────────────────────────
             useEffect(() => { setTimeout(() => { try { lucide.createIcons(); } catch(e){} }, 80); }, [tab, transactions, fixedBills, cards, cardEntries, editingId, showBillForm, showCardForm, showCardEntryForm, confirmDelete, confirmDeleteCard, confirmDeleteCardEntry, selectedMonth, filterArea, filterType, selectedCardId]);
@@ -2212,6 +2571,53 @@
                 }
                 return { label: 'CAIXA CONTROLADO', color: '#22c55e', bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.30)', hint: 'Fluxo sob controle. Mantenha o ritmo.' };
             }, [monthlySummary, budgets]);
+
+
+            const budgetRadar = useMemo(() => {
+                const buildBudgetMeta = (label, budgetValue, spentValue, color, icon) => {
+                    const budget = Number(budgetValue || 0);
+                    const spent = Number(spentValue || 0);
+                    const usage = budget > 0 ? (spent / budget) : 0;
+                    const remaining = budget - spent;
+                    let status = 'SEM LIMITE';
+                    let tone = '#9ca3af';
+                    let hint = 'Defina um teto para o app te avisar quando sair da zona segura.';
+                    if (budget > 0 && usage < 0.7) {
+                        status = 'DENTRO DO PLANO';
+                        tone = '#22c55e';
+                        hint = 'Uso saudável. Ainda existe folga para o restante do mês.';
+                    } else if (budget > 0 && usage < 1) {
+                        status = 'ATENÇÃO';
+                        tone = '#eab308';
+                        hint = 'Você está consumindo a margem do mês. Segure novas saídas.';
+                    } else if (budget > 0) {
+                        status = 'ESTOUROU';
+                        tone = '#ef4444';
+                        hint = 'Você passou do teto mensal. Corte gastos até voltar ao limite.';
+                    }
+                    return { label, budget, spent, usage, remaining, status, tone, hint, color, icon };
+                };
+
+                const pessoal = buildBudgetMeta('PESSOAL', budgets.personal, monthlySummary.p.e, '#818cf8', 'user');
+                const oficina = buildBudgetMeta('OFICINA', budgets.workshop, monthlySummary.w.e, '#d4af37', 'wrench');
+                const totalBudget = pessoal.budget + oficina.budget;
+                const totalSpent = pessoal.spent + oficina.spent;
+                const totalRemaining = totalBudget - totalSpent;
+                const totalUsage = totalBudget > 0 ? (totalSpent / totalBudget) : 0;
+                let totalStatus = 'SEM LIMITE';
+                let totalTone = '#9ca3af';
+                if (totalBudget > 0 && totalUsage < 0.7) {
+                    totalStatus = 'CONTROLE FORTE';
+                    totalTone = '#22c55e';
+                } else if (totalBudget > 0 && totalUsage < 1) {
+                    totalStatus = 'ZONA DE ALERTA';
+                    totalTone = '#eab308';
+                } else if (totalBudget > 0) {
+                    totalStatus = 'LIMITE ROMPIDO';
+                    totalTone = '#ef4444';
+                }
+                return { pessoal, oficina, totalBudget, totalSpent, totalRemaining, totalUsage, totalStatus, totalTone };
+            }, [budgets, monthlySummary]);
 
             // ── Fixed bills due alert ──────────────────────────────────────────
             const isBillPaidForMonth = (bill, ym = currentYM) => Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(ym);
@@ -3205,8 +3611,9 @@
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
                         <div className="text-center flex-1">
-                            <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">ALCANTARA BANK V6 BLACK</p>
-                            <p className="text-[9px] text-gray-500 font-mono">GESTÃO FINANCEIRA INTEGRADA • V6 BLACK</p>
+                            <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">ALCANTARA BANK V12 UNIFICADO</p>
+                            <p className="text-[9px] text-gray-500 font-mono">GESTÃO FINANCEIRA INTEGRADA • V12 UNIFICADO</p>
+                            <p className="text-[9px] text-cyan-400 font-mono">ARMAZENAMENTO HÍBRIDO • INDEXEDDB + CACHE LOCAL</p>
                         </div>
                         <div className="relative">
                             {urgentCount > 0 && (
@@ -3324,7 +3731,7 @@
                             <div className="rounded-xl p-3" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V6 BLACK</p>
+                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V9</p>
                                         <p className="text-sm font-bold text-white mt-0.5">{tacticalPressure.label}</p>
                                         <p className="text-[9px] text-gray-500 mt-1">{tacticalPressure.hint}</p>
                                     </div>
@@ -3447,24 +3854,76 @@
 
                             {/* Budget settings */}
                             <div className="os-card p-4 rounded-xl">
-                                <p className="font-usarmy text-[#d4af37] text-xs mb-3">ORÇAMENTO MENSAL</p>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between gap-3 mb-3">
                                     <div>
-                                        <label className="text-[9px] font-mono flex items-center gap-1 mb-1" style={{color:'#818cf8'}}>
-                                            <i data-lucide="user" className="w-3 h-3"></i> PESSOAL
-                                        </label>
-                                        <input type="number" inputMode="decimal" value={budgets.personal}
-                                            onChange={e=>setBudgets(p=>({...p,personal:parseFloat(e.target.value)||0}))}
-                                            className="w-full p-3 rounded-xl text-sm" />
+                                        <p className="font-usarmy text-[#d4af37] text-xs">ORÇAMENTO INTELIGENTE</p>
+                                        <p className="text-[9px] text-gray-500 mt-1">Define o teto seguro de gastos do mês. O app compara suas saídas com esse limite e avisa quando entrar em alerta.</p>
                                     </div>
-                                    <div>
-                                        <label className="text-[9px] font-mono flex items-center gap-1 mb-1" style={{color:'#d4af37'}}>
-                                            <i data-lucide="wrench" className="w-3 h-3"></i> OFICINA
-                                        </label>
-                                        <input type="number" inputMode="decimal" value={budgets.workshop}
-                                            onChange={e=>setBudgets(p=>({...p,workshop:parseFloat(e.target.value)||0}))}
-                                            className="w-full p-3 rounded-xl text-sm" />
+                                    <div className="text-right">
+                                        <p className="text-[8px] text-gray-500 font-mono">STATUS GERAL</p>
+                                        <p className="font-usarmy text-xs" style={{color:budgetRadar.totalTone}}>{budgetRadar.totalStatus}</p>
                                     </div>
+                                </div>
+
+                                <div className="rounded-xl p-3 mb-3" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-mono">LIMITE TOTAL DO MÊS</p>
+                                            <p className="font-usarmy text-white text-sm mt-1">{money(budgetRadar.totalBudget)}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[8px] text-gray-500 font-mono">GASTO ACUMULADO</p>
+                                            <p className="font-usarmy text-sm mt-1" style={{color:budgetRadar.totalTone}}>{money(budgetRadar.totalSpent)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3">
+                                        <ProgressBar value={budgetRadar.totalSpent} total={budgetRadar.totalBudget} color={budgetRadar.totalTone} />
+                                        <div className="flex justify-between text-[8px] text-gray-500 mt-1">
+                                            <span>{pct(budgetRadar.totalSpent, budgetRadar.totalBudget)}% usado</span>
+                                            <span className={budgetRadar.totalRemaining >= 0 ? 'text-green-400' : 'text-red-400'}>{budgetRadar.totalRemaining >= 0 ? 'FOLGA' : 'ESTOURO'} {money(Math.abs(budgetRadar.totalRemaining))}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3">
+                                    {[budgetRadar.pessoal, budgetRadar.oficina].map(meta => (
+                                        <div key={meta.label} className="rounded-xl p-3" style={{background:'rgba(255,255,255,0.03)', border:`1px solid ${meta.tone}33`}}>
+                                            <div className="flex items-start justify-between gap-3 mb-2">
+                                                <div>
+                                                    <label className="text-[9px] font-mono flex items-center gap-1 mb-2" style={{color:meta.color}}>
+                                                        <i data-lucide={meta.icon} className="w-3 h-3"></i> {meta.label}
+                                                    </label>
+                                                    <p className="text-[8px] text-gray-500">{meta.hint}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[8px] text-gray-500 font-mono">STATUS</p>
+                                                    <p className="font-usarmy text-[10px]" style={{color:meta.tone}}>{meta.status}</p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 items-end">
+                                                <div>
+                                                    <input type="number" inputMode="decimal" value={meta.label === 'PESSOAL' ? budgets.personal : budgets.workshop}
+                                                        onChange={e=>setBudgets(p=>meta.label === 'PESSOAL' ? ({...p,personal:parseFloat(e.target.value)||0}) : ({...p,workshop:parseFloat(e.target.value)||0}))}
+                                                        className="w-full p-3 rounded-xl text-sm" />
+                                                    <p className="text-[8px] text-gray-500 mt-1 font-mono">LIMITE CONFIGURADO</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[8px] text-gray-500 font-mono">GASTO DO MÊS</p>
+                                                    <p className="font-usarmy text-sm text-white mt-1">{money(meta.spent)}</p>
+                                                    <p className={`text-[8px] mt-1 ${meta.remaining >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {meta.remaining >= 0 ? 'RESTANTE' : 'ACIMA'} {money(Math.abs(meta.remaining))}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="mt-3">
+                                                <ProgressBar value={meta.spent} total={meta.budget} color={meta.color} />
+                                                <div className="flex justify-between text-[8px] text-gray-500 mt-1">
+                                                    <span>{pct(meta.spent, meta.budget)}% do limite</span>
+                                                    <span style={{color:meta.tone}}>{meta.status}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -4155,7 +4614,7 @@
                                 ))}
                             </div>
                             <div className="rounded-xl p-4" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
-                                <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>ANÁLISE AUTOMÁTICA V6 BLACK</p>
+                                <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>ANÁLISE AUTOMÁTICA V9</p>
                                 <p className="text-sm font-bold text-white mt-1">{tacticalPressure.label}</p>
                                 <p className="text-[10px] text-gray-500 mt-2">{tacticalPressure.hint}</p>
                             </div>
@@ -4355,7 +4814,7 @@
 
             const loadPartners = () => {
                 try {
-                    const raw = localStorage.getItem(STORAGE_KEY);
+                    const raw = SafeStorage.getItem(STORAGE_KEY);
                     return asArray(safeJsonParse(raw, []))
                         .map((partner, index) => normalizePartner(partner, index))
                         .filter(Boolean);
@@ -4367,7 +4826,7 @@
 
             const persistPartners = (list) => {
                 try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(asArray(list)));
+                    SafeStorage.setItem(STORAGE_KEY, JSON.stringify(asArray(list)));
                     return true;
                 } catch (error) {
                     console.error('Erro ao salvar parceiros:', error);
@@ -4637,7 +5096,7 @@
 
             const loadRecords = () => {
                 try {
-                    return asArray(safeJsonParse(localStorage.getItem(STORAGE_KEY), []))
+                    return asArray(safeJsonParse(SafeStorage.getItem(STORAGE_KEY), []))
                         .map((item, index) => normalizeRecord(item, index))
                         .filter(Boolean)
                         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -4649,7 +5108,7 @@
 
             const persistRecords = (list) => {
                 try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(asArray(list)));
+                    SafeStorage.setItem(STORAGE_KEY, JSON.stringify(asArray(list)));
                     return true;
                 } catch (error) {
                     console.error('Erro ao salvar assistências:', error);
@@ -5001,7 +5460,7 @@
         const App = () => {
             const { state, dispatch } = useDb();
             const { confirm: confirmDialog, modal: confirmModal } = useConfirm();
-            const [isAuth, setIsAuth] = useState(localStorage.getItem('alcantara_auth') === 'true');
+            const [isAuth, setIsAuth] = useState(SafeStorage.getItem('alcantara_auth') === 'true');
             const [view, setView] = useState('dashboard');
             const orders = state.orders;
             const [selectedOrder, setSelectedOrder] = useState(null);
@@ -5221,7 +5680,7 @@
                             <img src={LOGO_URL} className="w-10 h-10 rounded-full border border-[#d4af37]/30" alt="Logo" />
                             <div>
                                 <h1 className="font-usarmy text-[#d4af37] text-sm">ALCANTARA ARMEIRO</h1>
-                                <p className="text-[8px] text-gray-500">SISTEMA PRO V8.1</p>
+                                <p className="text-[8px] text-gray-500">SISTEMA PRO V9.0</p>
                             </div>
                         </div>
                         <button
@@ -5233,7 +5692,7 @@
                                     confirmClass: 'bg-red-600 text-white',
                                     icon: 'log-out'
                                 });
-                                if (ok) { localStorage.removeItem('alcantara_auth'); window.location.reload(); }
+                                if (ok) { SafeStorage.removeItem('alcantara_auth'); window.location.reload(); }
                             }}
                             className="btn-icon text-red-500"
                             aria-label="Sair do sistema"
@@ -5373,7 +5832,7 @@
 
         const BenchShortcut = ({ orders, onBack }) => {
             const [selectedId, setSelectedId] = useState('');
-            const [lastOrderId, setLastOrderId] = useState(localStorage.getItem('alcantara_last_bench_os') || '');
+            const [lastOrderId, setLastOrderId] = useState(SafeStorage.getItem('alcantara_last_bench_os') || '');
 
             const stageLabels = {
                 ENTRADA: 'ENTRADA',
@@ -5410,7 +5869,7 @@
             const updateOperationalStage = (stage) => {
                 if (!selectedOrder) return;
 
-                const allOrders = JSON.parse(localStorage.getItem('alcantara_os') || '[]');
+                const allOrders = JSON.parse(SafeStorage.getItem('alcantara_os') || '[]');
                 const idx = allOrders.findIndex(o => o.id === selectedOrder.id);
                 if (idx === -1) return;
 
@@ -5420,8 +5879,8 @@
                     lastOperationalUpdate: new Date().toLocaleString('pt-BR')
                 };
 
-                localStorage.setItem('alcantara_os', JSON.stringify(allOrders));
-                localStorage.setItem('alcantara_last_bench_os', selectedOrder.id);
+                SafeStorage.setItem('alcantara_os', JSON.stringify(allOrders));
+                SafeStorage.setItem('alcantara_last_bench_os', selectedOrder.id);
                 setLastOrderId(selectedOrder.id);
                 showToast(`✅ OS ${selectedOrder.osNumber} atualizada para ${stageLabels[stage]}`, 'success');
                 setTimeout(() => window.location.reload(), 250);
@@ -5529,7 +5988,7 @@
 
             const handleLogin = () => {
                 if (verifyPassword(pass)) {
-                    localStorage.setItem('alcantara_auth', 'true');
+                    SafeStorage.setItem('alcantara_auth', 'true');
                     onLogin();
                 } else {
                     setError(true);
@@ -6275,7 +6734,7 @@
                     andamento: orders.filter(o => o.status === 'EM_CURSO').length,
                     aguardandoPecaStatus: orders.filter(o => o.status === 'AGUARDANDO_PECA').length,
                     finalizadas: orders.filter(o => o.status === 'CONCLUIDA').length,
-                    assistencias: asArray(safeJsonParse(localStorage.getItem('alcantara_assistencias_registros'), [])).length
+                    assistencias: asArray(safeJsonParse(SafeStorage.getItem('alcantara_assistencias_registros'), [])).length
                 };
 
                 OPERATIONAL_STAGES.forEach(stage => {
@@ -6529,7 +6988,7 @@
                                     ></span>
                                     <span className="relative z-10 flex items-center justify-center gap-2">
                                         <i data-lucide="landmark" className="w-5 h-5"></i>
-                                        ALCANTARA BANK V6 BLACK
+                                        Alcantara Bank
                                     </span>
                                 </button>
                                 <div className="grid grid-cols-2 gap-3 mt-3">
@@ -6575,31 +7034,31 @@
 
         const useGestaoData = () => {
             const [fornecedores, setFornecedores] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('gf_fornecedores')) || []; } 
+                try { return JSON.parse(SafeStorage.getItem('gf_fornecedores')) || []; } 
                 catch(e) { return []; }
             });
             const [pecas, setPecas] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('gf_pecas')) || []; } 
+                try { return JSON.parse(SafeStorage.getItem('gf_pecas')) || []; } 
                 catch(e) { return []; }
             });
             const [margemPadrao, setMargemPadrao] = useState(() => {
                 try { 
-                    const saved = localStorage.getItem('gf_margem');
+                    const saved = SafeStorage.getItem('gf_margem');
                     return saved ? parseInt(saved) : 60; 
                 }
                 catch(e) { return 60; }
             });
 
             useEffect(() => {
-                localStorage.setItem('gf_fornecedores', JSON.stringify(fornecedores));
+                SafeStorage.setItem('gf_fornecedores', JSON.stringify(fornecedores));
             }, [fornecedores]);
 
             useEffect(() => {
-                localStorage.setItem('gf_pecas', JSON.stringify(pecas));
+                SafeStorage.setItem('gf_pecas', JSON.stringify(pecas));
             }, [pecas]);
 
             useEffect(() => {
-                localStorage.setItem('gf_margem', margemPadrao.toString());
+                SafeStorage.setItem('gf_margem', margemPadrao.toString());
             }, [margemPadrao]);
 
             const calcularPrecoVenda = useCallback((preco, margem) => {
@@ -7128,20 +7587,20 @@
                     exportadoEm: new Date().toISOString() 
                 };
                 const json = JSON.stringify(dados, null, 2);
-                navigator.clipboard?.writeText(json).then(() => showToast('📋 Dados copiados para área de transferência!'));
+                navigator.clipboard?.writeText(json).then(() => showToast('📋 Dados de gestão copiados!'));
             };
 
             const importar = () => {
-                const json = prompt('Cole o JSON de backup:');
+                const json = prompt('Cole o JSON de backup da gestão:');
                 if (!json) return;
                 try {
                     const dados = JSON.parse(json);
                     if (dados.fornecedores) setFornecedores(dados.fornecedores);
                     if (dados.pecas) setPecas(dados.pecas);
                     if (dados.margemPadrao) setMargemPadrao(dados.margemPadrao);
-                    showToast('✅ Dados importados com sucesso!');
+                    showToast('✅ Dados da gestão importados com sucesso!');
                 } catch(e) {
-                    showToast('❌ Erro ao importar dados!');
+                    showToast('❌ Erro ao importar dados da gestão!');
                 }
             };
 
@@ -7151,38 +7610,70 @@
                         <button type="button" onClick={onBack} className="btn-icon text-[#d4af37]">
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
-                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS</h2>
+                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS TÁTICAS</h2>
                         <button onClick={onHome} className="btn-icon text-[#d4af37]">
                             <i data-lucide="home" className="w-5 h-5"></i>
                         </button>
                     </div>
 
-                    <div className="os-card p-8 text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#d4af37]/20 to-[#d4af37]/5 border border-[#d4af37]/30 flex items-center justify-center">
-                            <i data-lucide="wrench" className="w-8 h-8 text-[#d4af37]"></i>
+                    <div className="os-card p-6">
+                        <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#d4af37]/20 to-[#d4af37]/5 border border-[#d4af37]/30 flex items-center justify-center shrink-0">
+                                <i data-lucide="shield-check" className="w-7 h-7 text-[#d4af37]"></i>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-usarmy text-gray-400 tracking-[1px] mb-2">PAINEL DE APOIO</p>
+                                <h3 className="font-usarmy text-[#d4af37] text-base mb-2">GESTÃO DE FORNECEDORES E PEÇAS</h3>
+                                <p className="text-gray-400 text-sm leading-relaxed">Aqui ficam as utilidades rápidas da área técnica. O backup total do sistema continua centralizado em Ferramentas do menu principal.</p>
+                            </div>
                         </div>
-                        <h3 className="font-usarmy text-[#d4af37] text-lg mb-2">BACKUP DO SISTEMA</h3>
-                        <p className="text-gray-500 text-sm">Gestão de Fornecedores e Peças</p>
                     </div>
 
-                    <div className="space-y-3">
-                        <button onClick={exportar} className="w-full gold-gradient p-5 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3">
-                            <i data-lucide="download" className="w-5 h-5"></i>
-                            COPIAR DADOS (CLIPBOARD)
-                        </button>
-
-                        <button onClick={importar} className="w-full os-card p-5 rounded-xl font-usarmy text-sm text-[#d4af37] border border-[#d4af37]/30 flex items-center justify-center gap-3">
-                            <i data-lucide="upload" className="w-5 h-5"></i>
-                            COLAR DADOS (CLIPBOARD)
-                        </button>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="os-card p-4 text-center">
+                            <p className="text-[9px] text-gray-500 font-usarmy mb-1">FORNECEDORES</p>
+                            <p className="font-usarmy text-[#d4af37] text-lg">{fornecedores.length}</p>
+                        </div>
+                        <div className="os-card p-4 text-center">
+                            <p className="text-[9px] text-gray-500 font-usarmy mb-1">PEÇAS</p>
+                            <p className="font-usarmy text-[#d4af37] text-lg">{pecas.length}</p>
+                        </div>
+                        <div className="os-card p-4 text-center">
+                            <p className="text-[9px] text-gray-500 font-usarmy mb-1">MARGEM</p>
+                            <p className="font-usarmy text-[#d4af37] text-lg">{parseFloat(margemPadrao || 0).toFixed(0)}%</p>
+                        </div>
                     </div>
 
                     <div className="os-card p-5">
-                        <h4 className="font-usarmy text-[#d4af37] text-xs mb-4">INSTRUÇÕES</h4>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                                <i data-lucide="clipboard-list" className="w-5 h-5 text-cyan-300"></i>
+                            </div>
+                            <div>
+                                <h4 className="font-usarmy text-cyan-300 text-sm">UTILIDADES RÁPIDAS</h4>
+                                <p className="text-gray-500 text-xs">Backup manual da área de gestão</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <button onClick={exportar} className="w-full gold-gradient p-4 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3">
+                                <i data-lucide="download" className="w-5 h-5"></i>
+                                COPIAR DADOS DA GESTÃO
+                            </button>
+
+                            <button onClick={importar} className="w-full os-card p-4 rounded-xl font-usarmy text-sm text-[#d4af37] border border-[#d4af37]/30 flex items-center justify-center gap-3">
+                                <i data-lucide="upload" className="w-5 h-5"></i>
+                                RESTAURAR DADOS DA GESTÃO
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="os-card p-5">
+                        <h4 className="font-usarmy text-[#d4af37] text-xs mb-4">ORIENTAÇÕES</h4>
                         <ul className="text-gray-400 text-sm space-y-2">
-                            <li>• Use "Copiar Dados" para salvar na área de transferência</li>
-                            <li>• Use "Colar Dados" para restaurar de um backup anterior</li>
-                            <li>• Para backup completo do app, use Ferramentas no menu principal</li>
+                            <li>• Use este bloco somente para fornecedores, peças e margem padrão.</li>
+                            <li>• O backup total do app está centralizado em Ferramentas no menu principal.</li>
+                            <li>• Antes de grandes mudanças, faça um backup total completo.</li>
                         </ul>
                     </div>
                 </div>
@@ -7191,21 +7682,87 @@
 
         const ToolsManager = ({ onBack }) => {
             const [importing, setImporting] = useState(false);
+            const [backupBusy, setBackupBusy] = useState(false);
+            const [lastAction, setLastAction] = useState('PRONTO');
+
+            const handleExportFullBackup = async () => {
+                try {
+                    setBackupBusy(true);
+                    setLastAction('GERANDO BACKUP');
+                    const payload = await buildFullAppBackup();
+                    downloadJsonFile(`alcantara_backup_total_v13_${new Date().toISOString().slice(0,10)}.json`, payload);
+                    showToast('✅ Backup total gerado com sucesso!', 'success');
+                    setLastAction('BACKUP BAIXADO');
+                } catch (err) {
+                    showToast('❌ Erro ao gerar backup total', 'error');
+                    setLastAction('ERRO NO BACKUP');
+                } finally {
+                    setBackupBusy(false);
+                }
+            };
+
+            const handleExportFullBackupDrive = async () => {
+                try {
+                    setBackupBusy(true);
+                    setLastAction('ENVIANDO PARA O DRIVE');
+                    const payload = await buildFullAppBackup();
+                    const shared = await shareJsonFile(
+                        `alcantara_backup_total_v13_${new Date().toISOString().slice(0,10)}.json`,
+                        payload,
+                        'Salvar backup total do app no Google Drive'
+                    );
+                    showToast(shared ? '☁️ Compartilhe no Google Drive para salvar o backup' : '📦 Backup total baixado para envio manual', shared ? 'success' : 'warning');
+                    setLastAction(shared ? 'PRONTO PARA O DRIVE' : 'ARQUIVO BAIXADO');
+                } catch (err) {
+                    showToast('❌ Erro ao enviar backup para o Drive', 'error');
+                    setLastAction('ERRO NO DRIVE');
+                } finally {
+                    setBackupBusy(false);
+                }
+            };
 
             const handleImport = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
                 setImporting(true);
+                setLastAction('RESTAURANDO DADOS');
                 try {
+                    const raw = await file.text();
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.mode === 'full_system_backup') {
+                        const localSnapshot = parsed.localSnapshot && typeof parsed.localSnapshot === 'object' ? parsed.localSnapshot : {};
+                        const rows = Array.isArray(parsed.indexedRows) ? parsed.indexedRows : [];
+                        APP_BACKUP_KEYS.forEach(key => {
+                            if (!(key in localSnapshot)) {
+                                SafeStorage.removeItem(key);
+                            }
+                        });
+                        Object.entries(localSnapshot).forEach(([key, value]) => {
+                            if (value === null || value === undefined) SafeStorage.removeItem(key);
+                            else SafeStorage.setItem(key, String(value));
+                        });
+                        if (rows.length) {
+                            await SafeStorage.restoreRows(rows);
+                        }
+                        showToast('✅ Backup total restaurado com sucesso!', 'success');
+                        setLastAction('RESTAURAÇÃO CONCLUÍDA');
+                        setTimeout(() => window.location.reload(), 900);
+                        return;
+                    }
+
                     await db.importBackup(file);
-                    showToast("✅ Dados restaurados com sucesso!", "success");
+                    showToast('✅ Dados restaurados com sucesso!', 'success');
+                    setLastAction('RESTAURAÇÃO CONCLUÍDA');
                     setTimeout(() => window.location.reload(), 1000);
                 } catch (err) {
-                    showToast("❌ " + err, "error");
+                    showToast('❌ ' + (err?.message || err), 'error');
+                    setLastAction('ERRO NA RESTAURAÇÃO');
                     setImporting(false);
                 }
             };
+
+            const actionBusy = importing || backupBusy;
 
             return (
                 <div className="space-y-6 animate-fadeIn pb-10">
@@ -7213,47 +7770,115 @@
                         <button type="button" onClick={onBack} className="btn-icon text-[#d4af37]">
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
-                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS</h2>
+                        <h2 className="font-usarmy text-[#d4af37] text-sm">FERRAMENTAS V13</h2>
                         <div className="w-10"></div>
                     </div>
 
-                    <div className="os-card p-8 text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#d4af37]/20 to-[#d4af37]/5 border border-[#d4af37]/30 flex items-center justify-center">
-                            <i data-lucide="wrench" className="w-8 h-8 text-[#d4af37]"></i>
+                    <div className="os-card p-6">
+                        <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#d4af37]/20 to-[#d4af37]/5 border border-[#d4af37]/30 flex items-center justify-center shrink-0">
+                                <i data-lucide="shield" className="w-7 h-7 text-[#d4af37]"></i>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-usarmy text-gray-400 tracking-[1px] mb-2">PAINEL CENTRAL</p>
+                                <h3 className="font-usarmy text-[#d4af37] text-lg mb-2">BACKUP TOTAL UNIFICADO</h3>
+                                <p className="text-gray-400 text-sm leading-relaxed">Área premium para proteger o app inteiro. Tudo fica centralizado aqui: baixar, restaurar e enviar para o Google Drive.</p>
+                            </div>
                         </div>
-                        <h3 className="font-usarmy text-[#d4af37] text-lg mb-2">BACKUP COMPLETO</h3>
-                        <p className="text-gray-500 text-sm">Exportar/importar todos os dados do Sistema Alcantara Armeiro</p>
-                    </div>
 
-                    <div className="space-y-3">
-                        <button 
-                            onClick={db.exportBackup} 
-                            disabled={importing}
-                            className="w-full gold-gradient p-5 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3 disabled:opacity-50"
-                        >
-                            <i data-lucide="download" className="w-5 h-5"></i>
-                            EXPORTAR BACKUP
-                        </button>
-
-                        <label className={`w-full os-card p-5 rounded-xl font-usarmy text-sm text-[#d4af37] border border-[#d4af37]/30 flex items-center justify-center gap-3 cursor-pointer ${importing ? 'opacity-50' : ''}`}>
-                            {importing ? (
-                                <div className="loading-spinner"></div>
-                            ) : (
-                                <i data-lucide="upload" className="w-5 h-5"></i>
-                            )}
-                            {importing ? 'IMPORTANDO...' : 'IMPORTAR BACKUP'}
-                            <input type="file" accept=".json" onChange={handleImport} className="hidden" disabled={importing} />
-                        </label>
+                        <div className="grid grid-cols-3 gap-3 mt-5">
+                            <div className="os-card p-4 text-center">
+                                <p className="text-[9px] text-gray-500 font-usarmy mb-1">COBERTURA</p>
+                                <p className="font-usarmy text-[#d4af37] text-xs">APP INTEIRO</p>
+                            </div>
+                            <div className="os-card p-4 text-center">
+                                <p className="text-[9px] text-gray-500 font-usarmy mb-1">DESTINO</p>
+                                <p className="font-usarmy text-cyan-300 text-xs">JSON + DRIVE</p>
+                            </div>
+                            <div className="os-card p-4 text-center">
+                                <p className="text-[9px] text-gray-500 font-usarmy mb-1">STATUS</p>
+                                <p className="font-usarmy text-[#d4af37] text-[11px]">{lastAction}</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="os-card p-5">
-                        <h4 className="font-usarmy text-[#d4af37] text-xs mb-4">INSTRUÇÕES</h4>
-                        <ul className="text-gray-400 text-sm space-y-2">
-                            <li>• Exporte regularmente para manter backup seguro</li>
-                            <li>• O arquivo exportado contém todas as ordens, catálogo e produtos</li>
-                            <li>• Para importar, selecione um arquivo .json previamente exportado</li>
-                            <li>• A importação substituirá todos os dados atuais</li>
-                        </ul>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-[#d4af37]/10 border border-[#d4af37]/30 flex items-center justify-center">
+                                <i data-lucide="database-backup" className="w-5 h-5 text-[#d4af37]"></i>
+                            </div>
+                            <div>
+                                <h4 className="font-usarmy text-[#d4af37] text-sm">BACKUP TOTAL</h4>
+                                <p className="text-gray-500 text-xs">Exportar, salvar e restaurar</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 max-w-xl mx-auto">
+                            <button 
+                                onClick={handleExportFullBackup} 
+                                disabled={actionBusy}
+                                className="w-full gold-gradient p-5 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3 disabled:opacity-50"
+                            >
+                                {backupBusy ? <div className="loading-spinner"></div> : <i data-lucide="download" className="w-5 h-5"></i>}
+                                BAIXAR BACKUP TOTAL
+                            </button>
+
+                            <button 
+                                onClick={handleExportFullBackupDrive} 
+                                disabled={actionBusy}
+                                className="w-full os-card p-5 rounded-xl font-usarmy text-sm text-cyan-300 border border-cyan-500/30 flex items-center justify-center gap-3 disabled:opacity-50"
+                            >
+                                {backupBusy ? <div className="loading-spinner"></div> : <i data-lucide="cloud" className="w-5 h-5"></i>}
+                                SALVAR NO GOOGLE DRIVE
+                            </button>
+
+                            <label className={`w-full os-card p-5 rounded-xl font-usarmy text-sm text-[#d4af37] border border-[#d4af37]/30 flex items-center justify-center gap-3 cursor-pointer ${importing ? 'opacity-50' : ''}`}>
+                                {importing ? (
+                                    <div className="loading-spinner"></div>
+                                ) : (
+                                    <i data-lucide="upload" className="w-5 h-5"></i>
+                                )}
+                                {importing ? 'RESTAURANDO...' : 'RESTAURAR BACKUP TOTAL'}
+                                <input type="file" accept=".json" onChange={handleImport} className="hidden" disabled={actionBusy} />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="os-card p-5">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center">
+                                    <i data-lucide="settings-2" className="w-5 h-5 text-blue-400"></i>
+                                </div>
+                                <div>
+                                    <h4 className="font-usarmy text-blue-400 text-sm">MANUTENÇÃO</h4>
+                                    <p className="text-gray-500 text-xs">Boas práticas para não perder dados</p>
+                                </div>
+                            </div>
+                            <ul className="text-gray-400 text-sm space-y-2">
+                                <li>• Gere backup antes de grandes mudanças no app.</li>
+                                <li>• Após restaurar, o conteúdo atual será substituído pelos dados do arquivo.</li>
+                                <li>• O arquivo do Drive serve como cópia de segurança fora do aparelho.</li>
+                            </ul>
+                        </div>
+
+                        <div className="os-card p-5">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+                                    <i data-lucide="sparkles" className="w-5 h-5 text-emerald-400"></i>
+                                </div>
+                                <div>
+                                    <h4 className="font-usarmy text-emerald-400 text-sm">UTILIDADES</h4>
+                                    <p className="text-gray-500 text-xs">O que já vai junto no backup</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-[11px] font-usarmy">
+                                <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-gray-300">ORDENS + CATÁLOGO</div>
+                                <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-gray-300">PRODUTOS + ESTOQUE</div>
+                                <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-gray-300">BANK + CARTÕES</div>
+                                <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-gray-300">ASSISTÊNCIAS + PEÇAS</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
@@ -9110,9 +9735,9 @@ Alcantara Armeiro - Airsoft Repairs
 
                 // dispatch via parent (ProductsManager usa useDb)
                 // Workaround: atualizar localStorage diretamente e notificar
-                const prods = JSON.parse(localStorage.getItem('alcantara_products') || '[]');
+                const prods = JSON.parse(SafeStorage.getItem('alcantara_products') || '[]');
                 const idx = prods.findIndex(p => p.id === updatedProduct.id);
-                if (idx !== -1) { prods[idx] = updatedProduct; localStorage.setItem('alcantara_products', JSON.stringify(prods)); }
+                if (idx !== -1) { prods[idx] = updatedProduct; SafeStorage.setItem('alcantara_products', JSON.stringify(prods)); }
                 showToast("✅ Produto atualizado!", "success");
                 onSave();
                 onClose();
@@ -9578,8 +10203,10 @@ Alcantara Armeiro - Airsoft Repairs
         };
 
         // ========== RENDERIZAÇÃO ==========
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<DbProvider><App /></DbProvider>);
+        SafeStorage.ready.finally(() => {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<DbProvider><App /></DbProvider>);
+        });
     </script>
 
     <script>
