@@ -1373,6 +1373,42 @@
             return Math.max(0, subtotal - discount);
         };
 
+        const PAYMENT_METHOD_OPTIONS = [
+            { key: 'PIX', label: 'PIX' },
+            { key: 'DINHEIRO', label: 'DINHEIRO' },
+            { key: 'CARTAO_CREDITO', label: 'CARTÃO CRÉDITO' }
+        ];
+
+        const getPaymentMethodLabel = (method) => {
+            if (method === 'PIX') return 'Pix';
+            if (method === 'DINHEIRO') return 'Dinheiro';
+            if (method === 'CARTAO_CREDITO') return 'Cartão de crédito';
+            return 'Não informado';
+        };
+
+        const getInstallmentCount = (order) => {
+            const parsed = parseInt(order?.paymentInstallments, 10);
+            return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+        };
+
+        const getInstallmentAmount = (order) => {
+            const total = calculateTotal(order || {});
+            const installments = getInstallmentCount(order);
+            return installments > 0 ? total / installments : total;
+        };
+
+        const getPaymentSummaryText = (order) => {
+            const method = order?.paymentMethod || '';
+            if (!method) return 'Pagamento: não informado';
+            if (method === 'CARTAO_CREDITO') {
+                const installments = getInstallmentCount(order);
+                const installmentAmount = getInstallmentAmount(order);
+                const label = installments > 1 ? 'parcelas' : 'parcela';
+                return `Pagamento: Cartão de crédito • ${installments}x de R$ ${installmentAmount.toFixed(2)} (${label})`;
+            }
+            return `Pagamento: ${getPaymentMethodLabel(method)}`;
+        };
+
         const CUSTOMER_NOTES_KEY = 'alcantara_customer_notes';
 
         const normalizeCustomerKey = (value) => String(value || '')
@@ -1831,7 +1867,19 @@
             doc.setTextColor(180, 140, 40);
             doc.text(`R$ ${total.toFixed(2)}`, 170, yPos + 3);
 
-            yPos += 25;
+            yPos += 16;
+            yPos = checkPageBreak(yPos, 16);
+            doc.setDrawColor(212, 175, 55);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(20, yPos - 6, 170, 12, 2, 2);
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(0, 0, 0);
+            doc.text('FORMA DE PAGAMENTO:', 24, yPos);
+            doc.setFont('courier', 'normal');
+            doc.text(getPaymentSummaryText(order).replace('Pagamento: ', ''), 74, yPos);
+
+            yPos += 22;
             yPos = checkPageBreak(yPos, 20);
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(8);
@@ -1962,7 +2010,8 @@
                 descricaoItens += 'Produtos: ' + order.products.map(p => p.name).join(', ') + '. ';
             }
 
-            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${total.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}.`;
+            const paymentReceiptLabel = getPaymentSummaryText(order).replace('Pagamento: ', 'forma de pagamento ');
+            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${total.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.`;
 
             const lines = doc.splitTextToSize(receiptText, 140);
             yPos = checkPageBreak(yPos, lines.length * 5);
@@ -2050,7 +2099,19 @@
             doc.setTextColor(180, 140, 40);
             doc.text(`R$ ${total.toFixed(2)}`, 175, yPos + 2);
 
-            yPos += 25;
+            yPos += 18;
+            yPos = checkPageBreak(yPos, 18);
+            doc.setDrawColor(212, 175, 55);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(20, yPos - 6, 170, 12, 2, 2);
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'bold');
+            doc.text('FORMA DE PAGAMENTO:', 24, yPos);
+            doc.setFont(undefined, 'normal');
+            doc.text(getPaymentSummaryText(order).replace('Pagamento: ', ''), 74, yPos);
+
+            yPos += 22;
             yPos = checkPageBreak(yPos, 20);
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(8);
@@ -5853,7 +5914,7 @@
                             <img src={LOGO_URL} className="w-10 h-10 rounded-full border border-[#d4af37]/30" alt="Logo" />
                             <div>
                                 <h1 className="font-usarmy text-[#d4af37] text-sm">ALCANTARA ARMEIRO</h1>
-                                <p className="text-[8px] text-gray-500">SISTEMA PRO V15.0</p>
+                                <p className="text-[8px] text-gray-500">SISTEMA PRO V20.0</p>
                             </div>
                         </div>
                         <button
@@ -6113,6 +6174,9 @@
                                         </p>
                                         <p className="text-[10px] text-gray-500 mt-1">
                                             Pagamento: {selectedOrder.paymentStatus || 'PENDENTE'}
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 mt-1">
+                                            {getPaymentSummaryText(selectedOrder)}
                                         </p>
                                     </div>
                                     <div className="text-right">
@@ -8275,7 +8339,9 @@
                 defects: '',
                 techReport: '',
                 discountType: 'none',
-                discountValue: ''
+                discountValue: '',
+                paymentMethod: 'PIX',
+                paymentInstallments: 1
             });
 
             // IMPORTANTE: não mantenha cópia local do catálogo, senão o select fica desatualizado
@@ -9043,6 +9109,55 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                         <div className="border-t-2 border-[#d4af37]/30 pt-4 space-y-4">
                             <div className="flex items-center gap-2 mb-2">
+                                <i data-lucide="wallet" className="w-4 h-4 text-[#d4af37]"></i>
+                                <p className="text-[10px] font-usarmy text-[#d4af37]">MEIO DE PAGAMENTO</p>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                                {PAYMENT_METHOD_OPTIONS.map(option => (
+                                    <button
+                                        key={option.key}
+                                        type="button"
+                                        onClick={() => updateForm({
+                                            paymentMethod: option.key,
+                                            paymentInstallments: option.key === 'CARTAO_CREDITO'
+                                                ? getInstallmentCount(formData)
+                                                : 1
+                                        })}
+                                        className={`p-3 text-[10px] font-bold rounded-lg transition-all ${
+                                            formData.paymentMethod === option.key ? 'gold-gradient' : 'bg-white/5 text-gray-400'
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {formData.paymentMethod === 'CARTAO_CREDITO' && (
+                                <div className="grid grid-cols-[1.1fr_0.9fr] gap-3 items-end">
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">PARCELAMENTO</label>
+                                        <select
+                                            className="w-full p-4 rounded-xl"
+                                            value={getInstallmentCount(formData)}
+                                            onChange={e => updateForm({ paymentInstallments: parseInt(e.target.value, 10) || 1 })}
+                                        >
+                                            {Array.from({ length: 12 }, (_, index) => index + 1).map(number => (
+                                                <option key={number} value={number}>{number}x</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="bg-black/30 rounded-xl p-4 border border-white/5 min-h-[88px] flex flex-col justify-center">
+                                        <p className="text-[10px] text-gray-500 tracking-[0.08em]">PARCELA</p>
+                                        <p className="font-usarmy text-[#d4af37] text-lg leading-tight mt-1">
+                                            R$ {getInstallmentAmount(formData).toFixed(2)}
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 mt-1">por mês</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-2 mb-2">
                                 <i data-lucide="tag" className="w-4 h-4 text-[#d4af37]"></i>
                                 <p className="text-[10px] font-usarmy text-[#d4af37]">DESCONTO</p>
                             </div>
@@ -9103,7 +9218,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 </div>
                             )}
 
-                            <div className="bg-black/30 rounded-lg p-4 space-y-2 border border-white/5">
+                            <div className="bg-black/30 rounded-lg p-4 space-y-3 border border-white/5">
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-gray-400">Subtotal:</span>
                                     <span className="text-white font-bold">R$ {subtotal.toFixed(2)}</span>
@@ -9118,9 +9233,18 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 )}
 
-                                <div className="flex justify-between items-center pt-2 border-t border-[#d4af37]/30">
-                                    <span className="font-usarmy text-[#d4af37] text-lg">TOTAL:</span>
-                                    <span className="font-usarmy text-[#d4af37] text-2xl">R$ {total.toFixed(2)}</span>
+                                <div className="pt-3 border-t border-[#d4af37]/30 space-y-2">
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="font-usarmy text-[#d4af37] text-lg leading-none">TOTAL</span>
+                                        <span className="font-usarmy text-[#d4af37] text-2xl leading-none text-right">R$ {total.toFixed(2)}</span>
+                                    </div>
+                                    <div className="text-[11px] text-gray-400 leading-relaxed">
+                                        <span className="text-gray-500">Pagamento:</span>{' '}
+                                        <span className="text-gray-300">{getPaymentMethodLabel(formData.paymentMethod)}</span>
+                                        {formData.paymentMethod === 'CARTAO_CREDITO' && (
+                                            <span className="text-gray-500"> • {getInstallmentCount(formData)}x de R$ {getInstallmentAmount(formData).toFixed(2)}</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -9189,6 +9313,7 @@ Manutenção tática especializada`;
 🔫 Equipamento: ${order.equipment}
 📊 Status: ${statusConfig.label}
 💳 Pagamento: ${order.paymentStatus === 'PAGO' ? '✅ PAGO' : '⏳ PENDENTE'}
+💰 Meio: ${getPaymentSummaryText(order)}
 
 ⚠️ DEFEITO RELATADO:
 ${order.defects || 'Não informado'}
@@ -9323,7 +9448,10 @@ Alcantara Armeiro - Airsoft Repairs
 
                             <div className="flex justify-between items-center pt-2 border-t border-white/10">
                                 <span className="font-usarmy text-white text-lg">TOTAL</span>
-                                <span className="font-usarmy text-[#d4af37] text-3xl">R$ {total.toFixed(2)}</span>
+                                <div className="text-right">
+                                    <span className="font-usarmy text-[#d4af37] text-3xl block">R$ {total.toFixed(2)}</span>
+                                    <span className="text-[10px] text-gray-500">{getPaymentSummaryText(order)}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
