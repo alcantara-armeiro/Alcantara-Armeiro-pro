@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-v7-1-1-premium';
-const RUNTIME_CACHE = 'alcantara-runtime-v7-1-1-premium';
+const CACHE_NAME = 'alcantara-v20-premium';
+const RUNTIME_CACHE = 'alcantara-runtime-v20-premium';
 
 const CORE_ASSETS = [
   './',
