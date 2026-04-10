@@ -889,10 +889,48 @@
                     catalog = state.catalog.filter(i => i.id !== action.id);
                     SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
                     return { ...state, catalog };
-                case 'UPDATE_CATALOG_ITEM':
+                case 'UPDATE_CATALOG_ITEM': {
+                    const previousItem = state.catalog.find(i => i.id === action.item.id) || null;
                     catalog = state.catalog.map(i => i.id === action.item.id ? action.item : i);
+
+                    const normalizeItemName = (value) => String(value || '')
+                        .normalize('NFD')
+                        .replace(/[̀-ͯ]/g, '')
+                        .trim()
+                        .toUpperCase();
+
+                    const syncOrderItems = (items, expectedType) => asArray(items).map(entry => {
+                        const matchesByCatalogId = String(entry?.catalogId || '') === String(action.item.id || '');
+                        const matchesByLegacyName = previousItem
+                            && expectedType === action.item.type
+                            && !entry?.catalogId
+                            && normalizeItemName(entry?.name) === normalizeItemName(previousItem?.name);
+
+                        if (!matchesByCatalogId && !matchesByLegacyName) return entry;
+
+                        const quantity = Math.max(1, parseInt(entry?.quantity, 10) || 1);
+                        const unitPrice = parseFloat(action.item.price) || 0;
+                        return {
+                            ...entry,
+                            name: action.item.name,
+                            type: action.item.type,
+                            catalogId: action.item.id,
+                            unitPrice,
+                            price: unitPrice * quantity
+                        };
+                    });
+
+                    orders = state.orders.map(order => ({
+                        ...order,
+                        services: syncOrderItems(order.services, 'service'),
+                        parts: syncOrderItems(order.parts, 'part'),
+                        products: syncOrderItems(order.products, 'product')
+                    }));
+
                     SafeStorage.setItem('alcantara_catalog', JSON.stringify(catalog));
-                    return { ...state, catalog };
+                    SafeStorage.setItem('alcantara_os', JSON.stringify(orders));
+                    return { ...state, catalog, orders };
+                }
                 case 'SAVE_PRODUCT':
                     products = [...state.products];
                     const pExists = products.find(p => p.name.toLowerCase() === action.product.name.toLowerCase());
@@ -8861,6 +8899,7 @@
                     const unitPrice = parseFloat(item.price) || 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
+                        catalogId: item.id,
                         name: item.name,
                         quantity: 1,
                         unitPrice,
