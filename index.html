@@ -9793,6 +9793,12 @@ Manutenção tática especializada`;
             };
 
             const handleShare = async () => {
+                const phone = formatWhatsAppNumber(order.customerPhone);
+                if (!phone) {
+                    showToast("❌ Telefone do cliente não informado", "error");
+                    return;
+                }
+
                 const text = `
 🔧 ORDEM DE SERVIÇO #${order.osNumber}
 
@@ -9818,16 +9824,7 @@ ${discount > 0 ? `🏷️ DESCONTO: - R$ ${discount.toFixed(2)}` : ''}
 Alcantara Armeiro - Airsoft Repairs
                 `.trim();
 
-                if (navigator.share) {
-                    try {
-                        await navigator.share({ text });
-                    } catch (err) {
-                        console.log('Compartilhamento cancelado');
-                    }
-                } else {
-                    navigator.clipboard.writeText(text);
-                    showToast("📋 Copiado para área de transferência!", "success");
-                }
+                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
             };
 
             return (
