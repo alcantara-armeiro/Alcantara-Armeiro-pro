@@ -878,22 +878,44 @@
         const isoToday = () => new Date().toISOString().slice(0,10);
         const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
         const isYearMonth = (value) => /^\d{4}-\d{2}$/.test(String(value || ''));
+        const normalizeIsoDateValue = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            if (isIsoDate(raw)) return raw;
+            if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw.slice(0,10);
+            const ptBrMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (ptBrMatch) {
+                const [, day, month, year] = ptBrMatch;
+                return `${year}-${month}-${day}`;
+            }
+            const ymMatch = raw.match(/^(\d{4})-(\d{2})$/);
+            if (ymMatch) return `${ymMatch[1]}-${ymMatch[2]}-01`;
+            return '';
+        };
         const normalizeYearMonth = (value) => {
             const raw = String(value || '').trim();
             if (!raw) return '';
             if (isYearMonth(raw)) return raw;
-            if (isIsoDate(raw)) return raw.slice(0,7);
-            const ptBrMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-            if (ptBrMatch) {
-                const [, day, month, year] = ptBrMatch;
-                return `${year}-${month}`;
-            }
-            const isoDateTimeMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-            if (isoDateTimeMatch) {
-                const [, year, month] = isoDateTimeMatch;
-                return `${year}-${month}`;
-            }
+            const isoDate = normalizeIsoDateValue(raw);
+            if (isoDate) return isoDate.slice(0,7);
             return '';
+        };
+        const normalizeBankTransaction = (transaction, fallbackIndex = 0) => {
+            if (!transaction || typeof transaction !== 'object') return null;
+            const normalizedDate = normalizeIsoDateValue(transaction.date || transaction.paymentDate || transaction.sourceOrderDate) || isoToday();
+            const normalizedPaymentDate = normalizeIsoDateValue(transaction.paymentDate || transaction.date || transaction.sourceOrderDate) || normalizedDate;
+            const normalizedSourceOrderDate = normalizeIsoDateValue(transaction.sourceOrderDate || transaction.date) || normalizedDate;
+            const looksLikeOfficeSync = transaction.syncSource === 'office'
+                || transaction.obs === 'Auto-importado da oficina'
+                || String(transaction.id || '').startsWith('sync_');
+            return {
+                ...transaction,
+                id: String(transaction.id || `tx_${Date.now()}_${fallbackIndex}`),
+                date: normalizedDate,
+                paymentDate: looksLikeOfficeSync ? normalizedPaymentDate : (normalizeIsoDateValue(transaction.paymentDate) || transaction.paymentDate || ''),
+                sourceOrderDate: looksLikeOfficeSync ? normalizedSourceOrderDate : (normalizeIsoDateValue(transaction.sourceOrderDate) || transaction.sourceOrderDate || ''),
+                syncSource: looksLikeOfficeSync ? 'office' : transaction.syncSource
+            };
         };
         const asArray = (value) => Array.isArray(value) ? value : [];
         const normalizeBudgets = (value) => ({
@@ -2467,7 +2489,7 @@
 
             // ── State ──────────────────────────────────────────────────────────
             const [tab,            setTab]            = useState(() => localStorage.getItem('alcantara_bank_quick_tab') || 'dashboard');
-            const [transactions,   setTransactions]   = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])));
+            const [transactions,   setTransactions]   = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])).map((item, index) => normalizeBankTransaction(item, index)).filter(Boolean));
             const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])));
             const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
             const [withdrawalLimit, setWithdrawalLimit] = useState(() => {
@@ -2669,7 +2691,7 @@
             };
 
             // ── Persist ────────────────────────────────────────────────────────
-            useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions))); }, [transactions]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions).map((item, index) => normalizeBankTransaction(item, index)).filter(Boolean))); }, [transactions]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_withdrawal_limit', JSON.stringify(Number(withdrawalLimit) > 0 ? Number(withdrawalLimit) : 800)); }, [withdrawalLimit]);
@@ -2792,7 +2814,7 @@
 
             // ── Monthly filtered summary ───────────────────────────────────────
             const monthlySummary = useMemo(() => {
-                const filtered = transactions.filter(t => t.date && t.date.slice(0,7) === selectedMonth);
+                const filtered = transactions.filter(t => normalizeYearMonth(t?.date) === selectedMonth);
                 const p = {i:0,e:0}; const w = {i:0,e:0};
                 let personalViaWorkshop = 0;
                 const catExpP = {}; const catExpW = {};
@@ -2840,13 +2862,14 @@
                     oficina: { ...base.oficina, saldo: base.oficina.entrada - base.oficina.saida },
                     geral: (base.pessoal.entrada + base.oficina.entrada) - (base.pessoal.saida + base.oficina.saida)
                 });
-                const todayItems = transactions.filter(t => t.date === todayKey);
+                const todayItems = transactions.filter(t => normalizeIsoDateValue(t?.date) === todayKey);
                 const weekItems = transactions.filter(t => {
-                    if (!isIsoDate(t?.date)) return false;
-                    const dt = new Date(`${t.date}T12:00:00`);
+                    const isoDate = normalizeIsoDateValue(t?.date);
+                    if (!isIsoDate(isoDate)) return false;
+                    const dt = new Date(`${isoDate}T12:00:00`);
                     return dt >= monday && dt <= sunday;
                 });
-                const monthItems = transactions.filter(t => String(t.date || '').slice(0,7) === selectedMonth);
+                const monthItems = transactions.filter(t => normalizeYearMonth(t?.date) === selectedMonth);
                 return {
                     today: enrich(build(todayItems)),
                     week: enrich(build(weekItems)),
@@ -3302,7 +3325,18 @@
             }, []);
 
             const monthlyExtractGroups = useMemo(() => {
+                const paidOfficeSyncIds = new Set((orders || [])
+                    .filter(order => order?.paymentStatus === 'PAGO')
+                    .map(order => String(order?.id || order?.osNumber || ''))
+                    .filter(Boolean));
                 const rows = transactions
+                    .map((item, index) => normalizeBankTransaction(item, index))
+                    .filter(Boolean)
+                    .filter(t => {
+                        const isOfficeSync = t.syncSource === 'office' || t.obs === 'Auto-importado da oficina';
+                        if (!isOfficeSync) return true;
+                        return paidOfficeSyncIds.has(String(t.syncId || '').trim());
+                    })
                     .filter(t => (!filterArea || filterArea === 'todos' || t.area === filterArea))
                     .filter(t => (!filterType || filterType === 'todos' || t.type === filterType))
                     .filter(t => {
@@ -3310,24 +3344,27 @@
                         if (!q) return true;
                         return [t.description, t.category, t.area, t.type, t.obs].some(v => String(v || '').toLowerCase().includes(q));
                     })
-                    .sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+                    .sort((a,b) => String(normalizeIsoDateValue(b.date) || '').localeCompare(String(normalizeIsoDateValue(a.date) || '')));
                 const grouped = {};
                 rows.forEach(item => {
-                    const ym = String(item.date || '').slice(0,7) || 'sem-data';
+                    const ym = normalizeYearMonth(item.date);
+                    if (!ym) return;
                     if (!grouped[ym]) grouped[ym] = [];
                     grouped[ym].push(item);
                 });
                 return Object.entries(grouped).sort((a,b) => b[0].localeCompare(a[0]));
-            }, [transactions, filterArea, filterType, search]);
+            }, [transactions, orders, filterArea, filterType, search]);
 
             const cashFlowDays = useMemo(() => {
                 const [y,m] = selectedMonth.split('-').map(Number);
                 const daysInMonth = new Date(y, m, 0).getDate();
                 const map = {};
                 transactions
-                    .filter(t => t.date && t.date.slice(0,7) === selectedMonth)
+                    .filter(t => normalizeYearMonth(t?.date) === selectedMonth)
                     .forEach(t => {
-                        const d = parseInt(t.date.slice(8,10));
+                        const isoDate = normalizeIsoDateValue(t?.date);
+                        const d = parseInt(String(isoDate || '').slice(8,10), 10);
+                        if (!d) return;
                         if (!map[d]) map[d] = { in:0, out:0 };
                         t.type==='entrada' ? map[d].in+=Number(t.value||0) : map[d].out+=Number(t.value||0);
                     });
