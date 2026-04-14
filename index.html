@@ -529,65 +529,63 @@
         }
 
     
-/* ULTRA LOGO ANIMADO */
-.assistencia-logo {
-    position: relative;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background-image: url('https://i.ibb.co/LFtsfFp/logo.jpg');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    border: 2px solid rgba(212, 175, 55, 0.35);
-    box-shadow:
-        0 0 10px rgba(212, 175, 55, 0.18),
-        inset 0 0 8px rgba(212, 175, 55, 0.08);
-    overflow: hidden;
-}
+        /* LOGOS PREMIUM ANIMADOS */
+        .logo-premium-animated{
+            position:relative;
+            overflow:hidden;
+            flex-shrink:0;
+            background-size:cover !important;
+            background-position:center !important;
+            background-repeat:no-repeat !important;
+            box-shadow:
+                0 0 0 1px rgba(212,175,55,0.10),
+                0 0 14px rgba(212,175,55,0.16),
+                inset 0 0 10px rgba(212,175,55,0.08);
+        }
+        .logo-premium-animated::before{
+            content:"";
+            position:absolute;
+            inset:-32%;
+            background:radial-gradient(circle, rgba(212,175,55,0.20) 0%, rgba(143,184,90,0.10) 40%, rgba(212,175,55,0) 72%);
+            animation:logoPremiumPulse 2.6s ease-in-out infinite;
+            pointer-events:none;
+        }
+        .logo-premium-animated::after{
+            content:"";
+            position:absolute;
+            top:-25%;
+            left:-70%;
+            width:42%;
+            height:150%;
+            background:linear-gradient(
+                115deg,
+                rgba(255,255,255,0) 0%,
+                rgba(255,255,255,0.10) 35%,
+                rgba(255,230,150,0.58) 50%,
+                rgba(255,255,255,0.10) 65%,
+                rgba(255,255,255,0) 100%
+            );
+            transform:skewX(-20deg);
+            animation:logoPremiumShine 2.9s linear infinite;
+            pointer-events:none;
+        }
+        @keyframes logoPremiumShine{
+            0%{left:-70%;opacity:0;}
+            10%{opacity:1;}
+            45%{opacity:1;}
+            100%{left:145%;opacity:0;}
+        }
+        @keyframes logoPremiumPulse{
+            0%,100%{transform:scale(0.94);opacity:0.72;}
+            50%{transform:scale(1.08);opacity:1;}
+        }
+        .assistencia-logo-premium{
+            background-image:url('https://i.ibb.co/LFtsfFp/logo.jpg');
+            border-radius:9999px;
+            border:2px solid rgba(111,143,66,0.38);
+        }
 
-.assistencia-logo::before {
-    content: "";
-    position: absolute;
-    inset: -30%;
-    background: radial-gradient(circle, rgba(212,175,55,0.18) 0%, rgba(212,175,55,0.08) 35%, rgba(212,175,55,0) 70%);
-    animation: assistenciaLogoPulse 2.6s ease-in-out infinite;
-    pointer-events: none;
-}
-
-.assistencia-logo::after {
-    content: "";
-    position: absolute;
-    top: -20%;
-    left: -65%;
-    width: 42%;
-    height: 140%;
-    background: linear-gradient(
-        115deg,
-        rgba(255,255,255,0) 0%,
-        rgba(255,255,255,0.10) 35%,
-        rgba(255,230,150,0.55) 50%,
-        rgba(255,255,255,0.10) 65%,
-        rgba(255,255,255,0) 100%
-    );
-    transform: skewX(-20deg);
-    animation: assistenciaLogoShine 2.8s linear infinite;
-    pointer-events: none;
-}
-
-@keyframes assistenciaLogoShine {
-    0% { left: -65%; opacity: 0; }
-    8% { opacity: 1; }
-    45% { opacity: 1; }
-    100% { left: 140%; opacity: 0; }
-}
-
-@keyframes assistenciaLogoPulse {
-    0%, 100% { transform: scale(0.94); opacity: 0.7; }
-    50% { transform: scale(1.08); opacity: 1; }
-}
-
-</style>
+    </style>
 </head>
 
 <body>
@@ -6190,9 +6188,7 @@
                         <>
                             <div className="os-card rounded-xl p-4 border border-[#6f8f42]/25">
                                 <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-12 h-12 rounded-full bg-[#6f8f42]/10 border border-[#6f8f42]/30 flex items-center justify-center">
-                                        <i data-lucide="shield-check" className="w-6 h-6 text-[#8fb85a]"></i>
-                                    </div>
+                                    <div className="w-12 h-12 assistencia-logo-premium logo-premium-animated" aria-hidden="true"></div>
                                     <div>
                                         <p className="font-usarmy text-[#8fb85a] text-sm">PAINEL DE ASSISTÊNCIAS</p>
                                         <p className="text-[10px] text-gray-500">Lista em ordem, busca rápida e acesso ao PDF.</p>
@@ -6272,9 +6268,7 @@
                     ) : (
                         <div className="os-card rounded-xl p-4 border border-[#6f8f42]/25">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-12 h-12 rounded-full bg-[#6f8f42]/10 border border-[#6f8f42]/30 flex items-center justify-center">
-                                    <i data-lucide="file-pen-line" className="w-6 h-6 text-[#8fb85a]"></i>
-                                </div>
+                                <div className="w-12 h-12 assistencia-logo-premium logo-premium-animated" aria-hidden="true"></div>
                                 <div>
                                     <p className="font-usarmy text-[#8fb85a] text-sm">{editingId ? 'EDITAR ASSISTÊNCIA' : 'CADASTRO DE ASSISTÊNCIA'}</p>                                   
                                 </div>
@@ -6584,7 +6578,7 @@
 
                     <header className="p-4 border-b border-white/5 bg-black/90 backdrop-blur-sm flex items-center justify-between sticky top-0 z-50">
                         <div className="flex items-center gap-3">
-                            <img src={LOGO_URL} className="w-10 h-10 rounded-full border border-[#d4af37]/30" alt="Logo" />
+                            <img src={LOGO_URL} className="w-10 h-10 rounded-full border border-[#d4af37]/30 logo-premium-animated" alt="Logo" />
                             <div>
                                 <h1 className="font-usarmy text-[#d4af37] text-sm">ALCANTARA ARMEIRO</h1>
                                 <p className="text-[8px] text-gray-500">SISTEMA PRO V20.0</p>
@@ -6920,7 +6914,7 @@
                     <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
                         <div className="splash-logo-wrap mb-6 splash-fade-up">
                             <div className="splash-logo-glow"></div>
-                            <img src={LOGO_URL} className="relative w-36 h-36 rounded-full border-2 border-[#d4af37]/35" alt="Logo" />
+                            <div className="relative w-36 h-36 rounded-full border-2 border-[#d4af37]/35 logo-premium-animated bg-center bg-cover bg-no-repeat" style={{ backgroundImage: `url(${LOGO_URL})` }} aria-label="Logo"></div>
                         </div>
 
                         <div className="text-center splash-fade-up" style={{ animationDelay: '0.12s' }}>
@@ -7749,7 +7743,7 @@
                     <div className="text-center mt-4">
                         <div className="relative inline-block">
                             <div className="absolute inset-0 bg-[#d4af37] blur-[40px] opacity-10 rounded-full"></div>
-                            <img src={LOGO_URL} className="w-32 h-32 rounded-full border-2 border-[#d4af37]/30 relative z-10" alt="Logo" />
+                            <div className="w-32 h-32 rounded-full border-2 border-[#d4af37]/30 relative z-10 logo-premium-animated bg-center bg-cover bg-no-repeat" style={{ backgroundImage: `url(${LOGO_URL})` }} aria-label="Logo"></div>
                         </div>
                         <h1 className="font-usarmy text-[#d4af37] text-3xl mt-4">ALCANTARA ARMEIRO</h1>
                         <p className="text-[9px] text-gray-500 tracking-[0.4em] font-bold">AIRSOFT REPAIRS</p>
@@ -7835,7 +7829,7 @@
                                 style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)' }}
                             ></span>
                             <span className="dashboard-premium-inner justify-start">
-                                <i data-lucide="shield-check" className="w-5 h-5 text-[#d7f1aa]"></i>
+                                <i data-lucide="shield-check" className="w-5 h-5 text-[#0b0b0b]"></i>
                                 <span className="text-left">                                    
                                     <span className="dashboard-premium-title block text-white">ASSISTÊNCIA</span>
                                 </span>
@@ -8530,9 +8524,7 @@
 
                     <div className="os-card p-6">
                         <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#d4af37]/20 to-[#d4af37]/5 border border-[#d4af37]/30 flex items-center justify-center shrink-0">
-                                <i data-lucide="shield-check" className="w-7 h-7 text-[#d4af37]"></i>
-                            </div>
+                            <div className="w-14 h-14 rounded-2xl assistencia-logo-premium logo-premium-animated shrink-0" aria-hidden="true"></div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-usarmy text-gray-400 tracking-[1px] mb-2">PAINEL DE APOIO</p>
                                 <h3 className="font-usarmy text-[#d4af37] text-base mb-2">GESTÃO DE FORNECEDORES E PEÇAS</h3>
