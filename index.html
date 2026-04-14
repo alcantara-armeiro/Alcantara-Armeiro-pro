@@ -877,6 +877,24 @@
 
         const isoToday = () => new Date().toISOString().slice(0,10);
         const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+        const isYearMonth = (value) => /^\d{4}-\d{2}$/.test(String(value || ''));
+        const normalizeYearMonth = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            if (isYearMonth(raw)) return raw;
+            if (isIsoDate(raw)) return raw.slice(0,7);
+            const ptBrMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (ptBrMatch) {
+                const [, day, month, year] = ptBrMatch;
+                return `${year}-${month}`;
+            }
+            const isoDateTimeMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+            if (isoDateTimeMatch) {
+                const [, year, month] = isoDateTimeMatch;
+                return `${year}-${month}`;
+            }
+            return '';
+        };
         const asArray = (value) => Array.isArray(value) ? value : [];
         const normalizeBudgets = (value) => ({
             personal: Number(value?.personal) > 0 ? Number(value.personal) : 2500,
@@ -2715,17 +2733,29 @@
             // ── Helpers ────────────────────────────────────────────────────────
             const money  = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
             const pct    = (a, b) => b > 0 ? Math.min(100, Math.round((a/b)*100)) : 0;
-            const monthLabel = ym => { const [y,m] = ym.split('-'); return new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}); };
+            const monthLabel = ym => {
+                const normalizedYM = normalizeYearMonth(ym);
+                if (!normalizedYM) return 'MÊS INVÁLIDO';
+                const [y,m] = normalizedYM.split('-').map(Number);
+                if (!y || !m) return 'MÊS INVÁLIDO';
+                return new Date(y, m - 1, 1, 12, 0, 0, 0).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+            };
 
             // ── Months for selector ─────────────────────────────────────────────
             const availableMonths = useMemo(() => {
                 const set = new Set([currentYM]);
-                transactions.forEach(t => { if(t.date) set.add(t.date.slice(0,7)); });
-                fixedBills.forEach(b => { if (isIsoDate(b?.date)) set.add(b.date.slice(0,7)); });
+                transactions.forEach(t => {
+                    const ym = normalizeYearMonth(t?.date);
+                    if (ym) set.add(ym);
+                });
+                fixedBills.forEach(b => {
+                    const ym = normalizeYearMonth(b?.date);
+                    if (ym) set.add(ym);
+                });
                 // Gerar todos os meses desde Jan/2024 até o maior mês encontrado (inclusive contas futuras)
-                const allMonths = [...set].filter(Boolean).sort();
+                const allMonths = [...set].filter(isYearMonth).sort();
                 const maxYM = allMonths[allMonths.length - 1] || currentYM;
-                const [maxY, maxM] = maxYM.split('-').map(Number);
+                const [maxY, maxM] = normalizeYearMonth(maxYM).split('-').map(Number);
                 const startYear = 2024; const startMonth = 1;
                 for (let y = startYear; y <= maxY; y++) {
                     const mStart = (y === startYear) ? startMonth : 1;
