@@ -2664,6 +2664,14 @@
 
             // ── Sync paid orders → bank income ─────────────────────────────────
             useEffect(() => {
+                const toIsoFromPtBr = (value) => {
+                    const raw = String(value || '').trim();
+                    if (!raw) return '';
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                    const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+                };
+
                 const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
                 setTransactions(prev => {
                     const next = [...prev];
@@ -2671,13 +2679,17 @@
                     paidOrders.forEach(order => {
                         const syncId = String(order.id || order.osNumber);
                         const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
+                        const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
                         if (!total || existingSyncIds.has(syncId)) return;
                         next.unshift({
                             id: 'sync_' + syncId, syncId, syncSource: 'office',
                             area: 'oficina', type: 'entrada', category: 'Serviço',
                             description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
                             value: total, isPersonalExpense: false,
-                            date: (order.date||'').split('/').reverse().join('-') || new Date().toISOString().slice(0,10),
+                            date: paymentDateIso,
+                            sourceOrderDate: orderDateIso,
+                            paymentDate: paymentDateIso,
                             obs: 'Auto-importado da oficina'
                         });
                     });
@@ -2688,9 +2700,13 @@
                             if (item.syncSource !== 'office') return item;
                             const o = paidMap.get(String(item.syncId));
                             const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
+                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
+                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
                             return { ...item, value: total,
                                 description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
-                                date: (o.date||'').split('/').reverse().join('-') || item.date
+                                date: paymentDateIso,
+                                sourceOrderDate: orderDateIso,
+                                paymentDate: paymentDateIso
                             };
                         });
                 });
@@ -3678,9 +3694,16 @@
                 const contentWidth = pageWidth - marginLeft - marginRight;
                 const usableBottom = pageHeight - 18;
                 const reportMonthLabel = monthLabel(selectedMonth).toUpperCase();
+                const getReportDate = (item) => {
+                    if (item?.syncSource === 'office' && item?.sourceOrderDate) return String(item.sourceOrderDate);
+                    return String(item?.date || '');
+                };
                 const selectedTransactions = transactions
-                    .filter(item => item?.date && String(item.date).slice(0,7) === selectedMonth)
-                    .sort((a,b) => `${a.date}_${a.id}`.localeCompare(`${b.date}_${b.id}`));
+                    .filter(item => {
+                        const reportDate = getReportDate(item);
+                        return reportDate && reportDate.slice(0,7) === selectedMonth;
+                    })
+                    .sort((a,b) => `${getReportDate(a)}_${a.id}`.localeCompare(`${getReportDate(b)}_${b.id}`));
                 const personalTransactions = selectedTransactions.filter(item => item.area === 'pessoal');
                 const workshopTransactions = selectedTransactions.filter(item => item.area !== 'pessoal');
                 const personalIncome = personalTransactions.filter(item => item.type === 'entrada');
@@ -4038,7 +4061,7 @@
                         { label: 'Valor', width: 210, align: 'right' }
                     ],
                     personalTransactions.map(item => [
-                        formatDateBR(item.date),
+                        formatDateBR(getReportDate(item)),
                         item.type === 'entrada' ? 'Receita' : 'Despesa',
                         item.category || '-',
                         item.description || item.obs || '-',
@@ -4058,7 +4081,7 @@
                         { label: 'Valor', width: 140, align: 'right' }
                     ],
                     workshopTransactions.map(item => [
-                        formatDateBR(item.date),
+                        formatDateBR(getReportDate(item)),
                         item.type === 'entrada' ? 'Receita' : 'Despesa',
                         item.category || '-',
                         item.description || item.obs || '-',
@@ -9295,7 +9318,15 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                 }
 
                 try {
-                    let savedOrder = { ...formData, operationalStatus: formData.operationalStatus || 'ENTRADA' };
+                    const previousOrder = state.orders.find(o => o.id === formData.id) || null;
+                    const nextPaymentDate = formData.paymentStatus === 'PAGO'
+                        ? (formData.paymentDate || previousOrder?.paymentDate || new Date().toISOString().slice(0,10))
+                        : '';
+                    let savedOrder = {
+                        ...formData,
+                        operationalStatus: formData.operationalStatus || 'ENTRADA',
+                        paymentDate: nextPaymentDate
+                    };
                     const syncedHistory = upsertEquipmentHistoryFromOrder(savedOrder);
                     if (syncedHistory?.id) {
                         savedOrder = { ...savedOrder, equipmentHistoryEntryId: syncedHistory.id };
