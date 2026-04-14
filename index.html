@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alcantara Armeiro - Pro Edition V15</title>
+    <title>Alcantara Armeiro - Pro Edition V3</title>
 
     <!-- PWA Meta Tags Otimizadas -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -528,7 +528,66 @@
             animation: splashBarLoad 1.9s ease-out forwards;
         }
 
-    </style>
+    
+/* ULTRA LOGO ANIMADO */
+.assistencia-logo {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-image: url('https://i.ibb.co/LFtsfFp/logo.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: 2px solid rgba(212, 175, 55, 0.35);
+    box-shadow:
+        0 0 10px rgba(212, 175, 55, 0.18),
+        inset 0 0 8px rgba(212, 175, 55, 0.08);
+    overflow: hidden;
+}
+
+.assistencia-logo::before {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    background: radial-gradient(circle, rgba(212,175,55,0.18) 0%, rgba(212,175,55,0.08) 35%, rgba(212,175,55,0) 70%);
+    animation: assistenciaLogoPulse 2.6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.assistencia-logo::after {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: -65%;
+    width: 42%;
+    height: 140%;
+    background: linear-gradient(
+        115deg,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.10) 35%,
+        rgba(255,230,150,0.55) 50%,
+        rgba(255,255,255,0.10) 65%,
+        rgba(255,255,255,0) 100%
+    );
+    transform: skewX(-20deg);
+    animation: assistenciaLogoShine 2.8s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes assistenciaLogoShine {
+    0% { left: -65%; opacity: 0; }
+    8% { opacity: 1; }
+    45% { opacity: 1; }
+    100% { left: 140%; opacity: 0; }
+}
+
+@keyframes assistenciaLogoPulse {
+    0%, 100% { transform: scale(0.94); opacity: 0.7; }
+    50% { transform: scale(1.08); opacity: 1; }
+}
+
+</style>
 </head>
 
 <body>
