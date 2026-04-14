@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alcantara-armeiro-v3/8';
+const CACHE_NAME = 'alcantara-armeiro-v3';
 const RUNTIME_CACHE = 'alcantara-armeiro-v3';
 
 const CORE_ASSETS = [
