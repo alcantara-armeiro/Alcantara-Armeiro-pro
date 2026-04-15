@@ -909,8 +909,8 @@
         const normalizeFixedBills = (value) => asArray(value)
             .map((bill, index) => normalizeFixedBill(bill, index))
             .filter(Boolean);
-        const getSafePaidMonths = (value) => Array.isArray(value)
-            ? value.filter(m => /^\d{4}-\d{2}$/.test(String(m)))
+        const normalizePaidMonths = (value) => Array.isArray(value)
+            ? [...new Set(value.filter(m => /^\d{4}-\d{2}$/.test(String(m || ''))))]
             : [];
 
         // ========== DB CONTEXT (estado global reativo) ==========
@@ -2667,6 +2667,14 @@
 
             // ── Sync paid orders → bank income ─────────────────────────────────
             useEffect(() => {
+                const toIsoFromPtBr = (value) => {
+                    const raw = String(value || '').trim();
+                    if (!raw) return '';
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                    const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+                };
+
                 const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
                 setTransactions(prev => {
                     const next = [...prev];
@@ -2674,13 +2682,17 @@
                     paidOrders.forEach(order => {
                         const syncId = String(order.id || order.osNumber);
                         const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
+                        const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
                         if (!total || existingSyncIds.has(syncId)) return;
                         next.unshift({
                             id: 'sync_' + syncId, syncId, syncSource: 'office',
                             area: 'oficina', type: 'entrada', category: 'Serviço',
                             description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
                             value: total, isPersonalExpense: false,
-                            date: (order.date||'').split('/').reverse().join('-') || new Date().toISOString().slice(0,10),
+                            date: paymentDateIso,
+                            sourceOrderDate: orderDateIso,
+                            paymentDate: paymentDateIso,
                             obs: 'Auto-importado da oficina'
                         });
                     });
@@ -2691,9 +2703,13 @@
                             if (item.syncSource !== 'office') return item;
                             const o = paidMap.get(String(item.syncId));
                             const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
+                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
+                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
                             return { ...item, value: total,
                                 description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
-                                date: (o.date||'').split('/').reverse().join('-') || item.date
+                                date: paymentDateIso,
+                                sourceOrderDate: orderDateIso,
+                                paymentDate: paymentDateIso
                             };
                         });
                 });
@@ -3335,11 +3351,11 @@
                     const billId = syncMatch ? syncMatch[1] : null;
                     const billMonth = syncMatch ? syncMatch[2] : null;
                     if (!billId || !billMonth) { showToast('Conta fixa vinculada inválida.','warning'); return; }
-                    setTransactions(prev => asArray(prev).filter(t => t.id !== id));
-                    setFixedBills(prev => normalizeFixedBills(prev).map(b => String(b.id) === String(billId)
-                        ? { ...b, paidMonths: getSafePaidMonths(b.paidMonths).filter(m => m !== billMonth) }
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    setFixedBills(prev => normalizeFixedBills(prev.map(b => String(b.id) === String(billId)
+                        ? { ...b, paidMonths: normalizePaidMonths(b.paidMonths).filter(m => m !== billMonth) }
                         : b
-                    ));
+                    )));
                     setConfirmDelete(null);
                     showToast('🗑️ Lançamento removido e conta fixa desmarcada','success');
                     return;
@@ -3351,16 +3367,15 @@
 
             // ── Fixed bills ────────────────────────────────────────────────────
             const saveBill = () => {
-                const normalizedValueRaw = String(billForm.value || '').replace(',', '.').trim();
-                const value = parseFloat(normalizedValueRaw);
-                const billDate = normalizeIsoDateValue(billForm.date) || billForm.date;
+                const value = parseFloat(billForm.value);
+                const billDate = billForm.date;
                 const day = parseInt((billDate || '').slice(8,10), 10);
-                if (!billForm.name.trim() || !Number.isFinite(value) || value <= 0 || !billDate || !day || day < 1 || day > 31) {
+                if (!billForm.name.trim() || !value || !billDate || !day || day < 1 || day > 31) {
                     showToast('Preencha nome, valor e data válida','warning'); return;
                 }
-                const existingBill = normalizeFixedBill(fixedBills.find(b => b.id === editingBillId) || null);
+                const existingBill = fixedBills.find(b => b.id === editingBillId);
                 const payload = normalizeFixedBill({
-                    ...(existingBill || {}),
+                    ...existingBill,
                     id: editingBillId || Date.now().toString(),
                     name: billForm.name.trim(),
                     value,
@@ -3368,7 +3383,7 @@
                     day,
                     area: billForm.area || 'oficina',
                     active: existingBill ? existingBill.active !== false : true,
-                    paidMonths: getSafePaidMonths(existingBill?.paidMonths)
+                    paidMonths: normalizePaidMonths(existingBill?.paidMonths)
                 });
                 if (!payload) {
                     showToast('Não foi possível salvar a conta fixa','error'); return;
@@ -3405,14 +3420,11 @@
                 const alreadyPaid = isBillPaidForMonth(bill, ym);
 
                 if (alreadyPaid) {
-                    setFixedBills(prev => normalizeFixedBills(prev).map(item => item.id === bill.id
-                        ? {
-                            ...item,
-                            paidMonths: getSafePaidMonths(item.paidMonths).filter(m => m !== ym)
-                        }
+                    setFixedBills(prev => normalizeFixedBills(prev.map(item => item.id === bill.id
+                        ? { ...item, paidMonths: normalizePaidMonths(item.paidMonths).filter(m => m !== ym) }
                         : item
-                    ));
-                    setTransactions(prev => asArray(prev).filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
+                    )));
+                    setTransactions(prev => prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
                     showToast('↩️ Conta desmarcada como paga','info');
                     return;
                 }
@@ -3432,15 +3444,12 @@
                     isPersonalExpense: false
                 };
 
-                setFixedBills(prev => normalizeFixedBills(prev).map(item => item.id === bill.id
-                    ? {
-                        ...item,
-                        paidMonths: [...new Set([...(getSafePaidMonths(item.paidMonths)), ym])]
-                    }
+                setFixedBills(prev => normalizeFixedBills(prev.map(item => item.id === bill.id
+                    ? { ...item, paidMonths: [...new Set([...normalizePaidMonths(item.paidMonths), ym])] }
                     : item
-                ));
+                )));
                 setTransactions(prev => {
-                    const cleaned = asArray(prev).filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId));
+                    const cleaned = prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId));
                     return [autoTransaction, ...cleaned];
                 });
                 showToast('✅ Conta marcada como paga e lançada no extrato','success');
@@ -3688,9 +3697,16 @@
                 const contentWidth = pageWidth - marginLeft - marginRight;
                 const usableBottom = pageHeight - 18;
                 const reportMonthLabel = monthLabel(selectedMonth).toUpperCase();
+                const getReportDate = (item) => {
+                    if (item?.syncSource === 'office' && item?.sourceOrderDate) return String(item.sourceOrderDate);
+                    return String(item?.date || '');
+                };
                 const selectedTransactions = transactions
-                    .filter(item => item?.date && String(item.date).slice(0,7) === selectedMonth)
-                    .sort((a,b) => `${a.date}_${a.id}`.localeCompare(`${b.date}_${b.id}`));
+                    .filter(item => {
+                        const reportDate = getReportDate(item);
+                        return reportDate && reportDate.slice(0,7) === selectedMonth;
+                    })
+                    .sort((a,b) => `${getReportDate(a)}_${a.id}`.localeCompare(`${getReportDate(b)}_${b.id}`));
                 const personalTransactions = selectedTransactions.filter(item => item.area === 'pessoal');
                 const workshopTransactions = selectedTransactions.filter(item => item.area !== 'pessoal');
                 const personalIncome = personalTransactions.filter(item => item.type === 'entrada');
@@ -4048,7 +4064,7 @@
                         { label: 'Valor', width: 210, align: 'right' }
                     ],
                     personalTransactions.map(item => [
-                        formatDateBR(item.date),
+                        formatDateBR(getReportDate(item)),
                         item.type === 'entrada' ? 'Receita' : 'Despesa',
                         item.category || '-',
                         item.description || item.obs || '-',
@@ -4068,7 +4084,7 @@
                         { label: 'Valor', width: 140, align: 'right' }
                     ],
                     workshopTransactions.map(item => [
-                        formatDateBR(item.date),
+                        formatDateBR(getReportDate(item)),
                         item.type === 'entrada' ? 'Receita' : 'Despesa',
                         item.category || '-',
                         item.description || item.obs || '-',
@@ -9305,7 +9321,15 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                 }
 
                 try {
-                    let savedOrder = { ...formData, operationalStatus: formData.operationalStatus || 'ENTRADA' };
+                    const previousOrder = state.orders.find(o => o.id === formData.id) || null;
+                    const nextPaymentDate = formData.paymentStatus === 'PAGO'
+                        ? (formData.paymentDate || previousOrder?.paymentDate || new Date().toISOString().slice(0,10))
+                        : '';
+                    let savedOrder = {
+                        ...formData,
+                        operationalStatus: formData.operationalStatus || 'ENTRADA',
+                        paymentDate: nextPaymentDate
+                    };
                     const syncedHistory = upsertEquipmentHistoryFromOrder(savedOrder);
                     if (syncedHistory?.id) {
                         savedOrder = { ...savedOrder, equipmentHistoryEntryId: syncedHistory.id };
