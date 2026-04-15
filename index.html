@@ -1076,9 +1076,8 @@
             <div className="modal-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Confirmação">
                 <div className="modal-content p-6" onClick={e => e.stopPropagation()}>
                     <div className="flex flex-col items-center text-center gap-4 mb-6">
-                        <div className="w-14 h-14 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center overflow-hidden">
-                            <img src={LOGO_URL} alt="Logo Alcantara" className="w-full h-full object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; const next = e.currentTarget.nextElementSibling; if (next) next.style.display='block'; }} />
-                            <i data-lucide={icon} className="w-7 h-7 text-yellow-400" style={{display:'none'}}></i>
+                        <div className="w-14 h-14 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
+                            <i data-lucide={icon} className="w-7 h-7 text-yellow-400"></i>
                         </div>
                         <div>
                             <p className="font-usarmy text-white text-sm mb-1">{message}</p>
@@ -2012,6 +2011,18 @@
             doc.text(`R$ ${total.toFixed(2)}`, 170, yPos + 3);
 
             yPos += 16;
+            yPos = checkPageBreak(yPos, 16);
+            doc.setDrawColor(212, 175, 55);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(20, yPos - 6, 170, 12, 2, 2);
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(0, 0, 0);
+            doc.text('FORMA DE PAGAMENTO:', 24, yPos);
+            doc.setFont('courier', 'normal');
+            doc.text(getPaymentSummaryText(order).replace('Pagamento: ', ''), 74, yPos);
+
+            yPos += 22;
             yPos = checkPageBreak(yPos, 20);
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(8);
@@ -3464,9 +3475,7 @@
                 brand: '',
                 final: '',
                 limit: '',
-                dueDay: '',
-                closingDay: '',
-                bestDay: ''
+                dueDay: ''
             };
             const emptyCardEntryForm = {
                 area: 'pessoal',
@@ -3474,9 +3483,7 @@
                 description: '',
                 value: '',
                 date: isoToday(),
-                obs: '',
-                isInstallment: false,
-                installmentCount: '2'
+                obs: ''
             };
             const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) || null, [cards, selectedCardId]);
             const [cardForm, setCardForm] = useState(emptyCardForm);
@@ -3503,33 +3510,14 @@
                 return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
             };
 
-            const getCardClosingDay = (card) => {
-                const raw = parseInt(card?.closingDay, 10);
-                return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
-            };
-
-            const getCardBestDay = (card) => {
-                const raw = parseInt(card?.bestDay, 10);
-                return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
-            };
-
-            const addMonthsToDate = (dateValue, amount = 0) => {
-                if (!dateValue) return isoToday();
-                const [year, month, day] = String(dateValue).split('-').map(Number);
-                if (!year || !month || !day) return isoToday();
-                const maxDay = new Date(year, month - 1 + amount + 1, 0).getDate();
-                const base = new Date(year, month - 1 + amount, Math.min(day, maxDay), 12, 0, 0, 0);
-                return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
-            };
-
             const getCardInvoiceMonth = (entry, card) => {
                 if (!entry?.date) return currentYM;
                 const baseYM = String(entry.date).slice(0,7);
-                const closingDay = getCardClosingDay(card);
-                if (!closingDay) return baseYM;
+                const dueDay = getCardDueDay(card);
+                if (!dueDay) return baseYM;
                 const entryDay = parseInt(String(entry.date).slice(8,10), 10);
                 if (!Number.isInteger(entryDay)) return baseYM;
-                return entryDay > closingDay ? addMonthsToYM(baseYM, 1) : baseYM;
+                return entryDay > dueDay ? addMonthsToYM(baseYM, 1) : baseYM;
             };
 
             const getCardInvoiceDueDate = (card, ym = currentYM) => {
@@ -3547,8 +3535,6 @@
                 const final = String(cardForm.final || '').replace(/\D/g, '').slice(-4);
                 const limit = cardForm.limit === '' ? '' : Number(cardForm.limit || 0);
                 const dueDay = cardForm.dueDay === '' ? '' : Math.min(Math.max(parseInt(cardForm.dueDay || 0, 10), 1), 31);
-                const closingDay = cardForm.closingDay === '' ? '' : Math.min(Math.max(parseInt(cardForm.closingDay || 0, 10), 1), 31);
-                const bestDay = cardForm.bestDay === '' ? '' : Math.min(Math.max(parseInt(cardForm.bestDay || 0, 10), 1), 31);
                 if (!name) {
                     showToast('Informe o nome do cartão', 'warning');
                     return;
@@ -3560,8 +3546,6 @@
                     final,
                     limit: limit !== '' && limit > 0 ? limit : '',
                     dueDay: dueDay || '',
-                    closingDay: closingDay || '',
-                    bestDay: bestDay || '',
                     createdAt: new Date().toISOString()
                 };
                 setCards(prev => editingCardId
@@ -3582,9 +3566,7 @@
                     brand: card.brand || '',
                     final: card.final || '',
                     limit: card.limit === '' ? '' : String(card.limit || ''),
-                    dueDay: card.dueDay === '' ? '' : String(card.dueDay || ''),
-                    closingDay: card.closingDay === '' ? '' : String(card.closingDay || ''),
-                    bestDay: card.bestDay === '' ? '' : String(card.bestDay || '')
+                    dueDay: card.dueDay === '' ? '' : String(card.dueDay || '')
                 });
                 setShowCardForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3613,40 +3595,20 @@
                     showToast('Preencha descrição, valor e data', 'warning');
                     return;
                 }
-                const safeArea = cardEntryForm.area === 'oficina' ? 'oficina' : 'pessoal';
-                const installmentCount = cardEntryForm.isInstallment ? Math.max(2, parseInt(cardEntryForm.installmentCount || '2', 10) || 2) : 1;
-                const installmentValue = Number((value / installmentCount).toFixed(2));
-                const lastInstallmentValue = Number((value - (installmentValue * (installmentCount - 1))).toFixed(2));
-                const basePayload = {
+                const payload = {
+                    id: editingCardEntryId || `card_entry_${Date.now()}`,
                     cardId: selectedCardId,
-                    area: safeArea,
+                    area: cardEntryForm.area === 'oficina' ? 'oficina' : 'pessoal',
                     category: cardEntryForm.category,
                     description: cardEntryForm.description.trim(),
-                    obs: cardEntryForm.obs || '',
-                    isInstallment: installmentCount > 1,
-                    installmentCount,
-                    parentInstallmentId: editingCardEntryId || `card_entry_group_${Date.now()}`
+                    value,
+                    date: cardEntryForm.date,
+                    obs: cardEntryForm.obs || ''
                 };
-
-                if (editingCardEntryId) {
-                    const payload = {
-                        ...basePayload,
-                        id: editingCardEntryId,
-                        value,
-                        date: cardEntryForm.date,
-                        installmentIndex: 1
-                    };
-                    setCardEntries(prev => prev.map(entry => entry.id === editingCardEntryId ? { ...entry, ...payload } : entry));
-                } else {
-                    const entriesToAdd = Array.from({ length: installmentCount }).map((_, index) => ({
-                        ...basePayload,
-                        id: `card_entry_${Date.now()}_${index}`,
-                        value: index === installmentCount - 1 ? lastInstallmentValue : installmentValue,
-                        date: addMonthsToDate(cardEntryForm.date, index),
-                        installmentIndex: index + 1
-                    }));
-                    setCardEntries(prev => [...entriesToAdd.reverse(), ...prev]);
-                }
+                setCardEntries(prev => editingCardEntryId
+                    ? prev.map(entry => entry.id === editingCardEntryId ? { ...entry, ...payload } : entry)
+                    : [payload, ...prev]
+                );
                 setEditingCardEntryId(null);
                 setCardEntryForm(prev => ({ ...emptyCardEntryForm, area: prev.area, category: getCats(prev.area, 'saida')[0], date: prev.date }));
                 setShowCardEntryForm(false);
@@ -3661,9 +3623,7 @@
                     description: entry.description || '',
                     value: String(entry.value || ''),
                     date: entry.date || isoToday(),
-                    obs: entry.obs || '',
-                    isInstallment: Boolean(entry.isInstallment),
-                    installmentCount: String(entry.installmentCount || 2)
+                    obs: entry.obs || ''
                 });
                 setShowCardEntryForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -5327,7 +5287,7 @@
                                                     onChange={e=>setCardForm(p=>({...p,final:e.target.value.replace(/\D/g,'').slice(-4)}))}
                                                     className="w-full p-3 rounded-xl text-sm" />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                            <div className="grid grid-cols-2 gap-3 mb-4">
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">LIMITE (opcional)</p>
                                                     <input type="number" inputMode="decimal" step="0.01" value={cardForm.limit} placeholder="0,00"
@@ -5338,20 +5298,6 @@
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">VENCIMENTO DA FATURA</p>
                                                     <input type="number" min="1" max="31" value={cardForm.dueDay} placeholder="Dia"
                                                         onChange={e=>setCardForm(p=>({...p,dueDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
-                                                        className="w-full p-3 rounded-xl text-sm" />
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3 mb-4">
-                                                <div>
-                                                    <p className="text-[9px] text-gray-500 font-mono mb-1">FECHAMENTO</p>
-                                                    <input type="number" min="1" max="31" value={cardForm.closingDay} placeholder="Dia"
-                                                        onChange={e=>setCardForm(p=>({...p,closingDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
-                                                        className="w-full p-3 rounded-xl text-sm" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-[9px] text-gray-500 font-mono mb-1">MELHOR DIA DE COMPRA</p>
-                                                    <input type="number" min="1" max="31" value={cardForm.bestDay} placeholder="Dia"
-                                                        onChange={e=>setCardForm(p=>({...p,bestDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
                                             </div>
@@ -5387,8 +5333,6 @@
                                                                 </div>
                                                                 {card.limit ? <p className="text-[10px] text-gray-500 mt-1">Limite: {money(card.limit)}</p> : null}
                                                                 {card.dueDay ? <p className="text-[10px] text-gray-500 mt-1">Vencimento da fatura: dia {String(card.dueDay).padStart(2,'0')}</p> : null}
-                                                                {card.closingDay ? <p className="text-[10px] text-gray-500 mt-1">Fechamento: dia {String(card.closingDay).padStart(2,'0')}</p> : null}
-                                                                {card.bestDay ? <p className="text-[10px] text-gray-500 mt-1">Melhor dia de compra: dia {String(card.bestDay).padStart(2,'0')}</p> : null}
                                                             </div>
                                                         </button>
                                                         <div className="text-right flex-shrink-0">
@@ -5440,15 +5384,13 @@
                                         </div>
                                     </div>
 
-                                    {(selectedCard.brand || selectedCard.final || selectedCard.limit || selectedCard.dueDay || selectedCard.closingDay || selectedCard.bestDay) && (
+                                    {(selectedCard.brand || selectedCard.final || selectedCard.limit || selectedCard.dueDay) && (
                                         <div className="os-card p-3 rounded-xl">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 {selectedCard.brand && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">{selectedCard.brand}</span>}
                                                 {selectedCard.final && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">FINAL {selectedCard.final}</span>}
                                                 {selectedCard.limit && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">LIMITE {money(selectedCard.limit)}</span>}
                                                 {selectedCard.dueDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">VENCE DIA {String(selectedCard.dueDay).padStart(2,'0')}</span>}
-                                                {selectedCard.closingDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">FECHA DIA {String(selectedCard.closingDay).padStart(2,'0')}</span>}
-                                                {selectedCard.bestDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">MELHOR DIA {String(selectedCard.bestDay).padStart(2,'0')}</span>}
                                             </div>
                                         </div>
                                     )}
@@ -5499,22 +5441,7 @@
                                             <p className="text-[9px] text-gray-500 font-mono mb-1">OBSERVAÇÃO (opcional)</p>
                                             <input type="text" value={cardEntryForm.obs} placeholder="Detalhes extras..."
                                                 onChange={e=>setCardEntryForm(prev=>({...prev,obs:e.target.value}))}
-                                                className="w-full p-3 rounded-xl mb-3 text-sm" />
-                                            <div className="rounded-xl border border-white/10 p-3 mb-4 bg-white/5">
-                                                <label className="flex items-center gap-2 text-sm text-white">
-                                                    <input type="checkbox" checked={!!cardEntryForm.isInstallment}
-                                                        onChange={e=>setCardEntryForm(prev=>({...prev,isInstallment:e.target.checked, installmentCount:e.target.checked ? (prev.installmentCount || '2') : '2'}))} />
-                                                    <span className="font-usarmy text-[10px] text-[#d4af37]">COMPRA PARCELADA</span>
-                                                </label>
-                                                {cardEntryForm.isInstallment && (
-                                                    <div className="mt-3">
-                                                        <p className="text-[9px] text-gray-500 font-mono mb-1">EM QUANTAS VEZES</p>
-                                                        <input type="number" min="2" max="24" value={cardEntryForm.installmentCount}
-                                                            onChange={e=>setCardEntryForm(prev=>({...prev,installmentCount:e.target.value.replace(/\D/g,'').slice(0,2)}))}
-                                                            className="w-full p-3 rounded-xl text-sm" />
-                                                    </div>
-                                                )}
-                                            </div>
+                                                className="w-full p-3 rounded-xl mb-4 text-sm" />
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button onClick={saveCardEntry} className="gold-gradient p-4 rounded-xl font-usarmy text-xs">{editingCardEntryId ? 'ATUALIZAR' : 'SALVAR GASTO'}</button>
                                                 <button onClick={()=>{ setEditingCardEntryId(null); setCardEntryForm(emptyCardEntryForm); setShowCardEntryForm(false); }} className="p-4 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
@@ -5550,7 +5477,6 @@
                                                         <div className="flex flex-wrap items-center gap-1 mb-1">
                                                             <AreaBadge area={entry.area} size="xs" />
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{entry.category}</span>
-                                                            {entry.isInstallment && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-[#d4af37] border border-[#d4af37]/20">{entry.installmentIndex || 1}/{entry.installmentCount || 1}</span>}
                                                         </div>
                                                         <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
                                                         <p className="text-[10px] text-gray-500 mt-0.5">{entry.date?.split('-').reverse().join('/')} {entry.obs ? `• ${entry.obs}` : ''}</p>
