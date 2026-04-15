@@ -1076,8 +1076,13 @@
             <div className="modal-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Confirmação">
                 <div className="modal-content p-6" onClick={e => e.stopPropagation()}>
                     <div className="flex flex-col items-center text-center gap-4 mb-6">
-                        <div className="w-14 h-14 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
-                            <i data-lucide={icon} className="w-7 h-7 text-yellow-400"></i>
+                        <div
+                            className="w-20 h-20 rounded-full border border-yellow-500/30 flex items-center justify-center logo-premium-animated"
+                            style={{ backgroundImage: `url(${LOGO_URL})`, backgroundColor: 'rgba(212,175,55,0.10)' }}
+                        >
+                            <div className="w-7 h-7 rounded-full bg-black/30 flex items-center justify-center border border-yellow-500/20">
+                                <i data-lucide={icon} className="w-4 h-4 text-yellow-300"></i>
+                            </div>
                         </div>
                         <div>
                             <p className="font-usarmy text-white text-sm mb-1">{message}</p>
@@ -2010,18 +2015,6 @@
             doc.setTextColor(180, 140, 40);
             doc.text(`R$ ${total.toFixed(2)}`, 170, yPos + 3);
 
-            yPos += 16;
-            yPos = checkPageBreak(yPos, 16);
-            doc.setDrawColor(212, 175, 55);
-            doc.setLineWidth(0.3);
-            doc.roundedRect(20, yPos - 6, 170, 12, 2, 2);
-            doc.setFont('courier', 'bold');
-            doc.setFontSize(8);
-            doc.setTextColor(0, 0, 0);
-            doc.text('FORMA DE PAGAMENTO:', 24, yPos);
-            doc.setFont('courier', 'normal');
-            doc.text(getPaymentSummaryText(order).replace('Pagamento: ', ''), 74, yPos);
-
             yPos += 22;
             yPos = checkPageBreak(yPos, 20);
             doc.setTextColor(0, 0, 0);
@@ -2472,8 +2465,8 @@
             };
             const [form, setForm] = useState(emptyForm);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
-            const [cards,          setCards]          = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
-            const [cardEntries,    setCardEntries]    = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
+            const [cards,          setCards]          = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])).map((item, index) => normalizeCard(item, index)).filter(card => card?.name));
+            const [cardEntries,    setCardEntries]    = useState(() => asArray(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])).map((item, index) => normalizeCardEntry(item, index)).filter(entry => entry?.cardId && entry?.value > 0));
             const [selectedCardId, setSelectedCardId] = useState(null);
             const defaultDebtPlanState = {
                 currentMonthCritical: [
@@ -2655,8 +2648,8 @@
             useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_withdrawal_limit', JSON.stringify(Number(withdrawalLimit) > 0 ? Number(withdrawalLimit) : 800)); }, [withdrawalLimit]);
-            useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(asArray(cards)));                  }, [cards]);
-            useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(asArray(cardEntries)));            }, [cardEntries]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(asArray(cards).map((item, index) => normalizeCard(item, index)).filter(card => card?.name)));                  }, [cards]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(asArray(cardEntries).map((item, index) => normalizeCardEntry(item, index)).filter(entry => entry?.cardId && entry?.value > 0)));            }, [cardEntries]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_debt_plan',     JSON.stringify(normalizeDebtPlanState(debtPlanData))); }, [debtPlanData]);
 
             // ── Icon refresh ───────────────────────────────────────────────────
@@ -3459,7 +3452,9 @@
                 brand: '',
                 final: '',
                 limit: '',
-                dueDay: ''
+                dueDay: '',
+                closingDay: '',
+                bestPurchaseDay: ''
             };
             const emptyCardEntryForm = {
                 area: 'pessoal',
@@ -3467,7 +3462,9 @@
                 description: '',
                 value: '',
                 date: isoToday(),
-                obs: ''
+                obs: '',
+                isInstallment: false,
+                installmentTotal: '2'
             };
             const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) || null, [cards, selectedCardId]);
             const [cardForm, setCardForm] = useState(emptyCardForm);
@@ -3489,19 +3486,87 @@
                 return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2,'0')}`;
             };
 
+            const normalizeCardDay = (value) => {
+                const raw = parseInt(value, 10);
+                return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : '';
+            };
+
+            const normalizeCard = (card, fallbackIndex = 0) => {
+                if (!card || typeof card !== 'object') return null;
+                return {
+                    ...card,
+                    id: String(card.id || `card_${Date.now()}_${fallbackIndex}`),
+                    name: String(card.name || '').trim(),
+                    brand: String(card.brand || '').trim(),
+                    final: String(card.final || '').replace(/\D/g, '').slice(-4),
+                    limit: Number(card.limit || 0) > 0 ? Number(card.limit) : '',
+                    dueDay: normalizeCardDay(card.dueDay),
+                    closingDay: normalizeCardDay(card.closingDay),
+                    bestPurchaseDay: normalizeCardDay(card.bestPurchaseDay),
+                    paidInvoiceMonths: Array.isArray(card.paidInvoiceMonths)
+                        ? [...new Set(card.paidInvoiceMonths.filter(m => /^\d{4}-\d{2}$/.test(String(m))))]
+                        : [],
+                    createdAt: card.createdAt || new Date().toISOString()
+                };
+            };
+
+            const normalizeCardEntry = (entry, fallbackIndex = 0) => {
+                if (!entry || typeof entry !== 'object') return null;
+                const area = entry.area === 'oficina' ? 'oficina' : 'pessoal';
+                const value = Number(entry.value || 0);
+                const installmentTotal = Math.max(1, parseInt(entry.installmentTotal || entry.installments || 1, 10) || 1);
+                const installmentNumber = Math.max(1, Math.min(installmentTotal, parseInt(entry.installmentNumber || 1, 10) || 1));
+                const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(entry.date || ''))
+                    ? String(entry.date)
+                    : (/^\d{4}-\d{2}-\d{2}$/.test(String(entry.purchaseDate || '')) ? String(entry.purchaseDate) : isoToday());
+                const purchaseDate = /^\d{4}-\d{2}-\d{2}$/.test(String(entry.purchaseDate || '')) ? String(entry.purchaseDate) : normalizedDate;
+                const invoiceMonth = /^\d{4}-\d{2}$/.test(String(entry.invoiceMonth || '')) ? String(entry.invoiceMonth) : '';
+                return {
+                    ...entry,
+                    id: String(entry.id || `card_entry_${Date.now()}_${fallbackIndex}`),
+                    cardId: String(entry.cardId || ''),
+                    area,
+                    category: String(entry.category || getCats(area, 'saida')[0] || 'Outros'),
+                    description: String(entry.description || '').trim(),
+                    value: value > 0 ? value : 0,
+                    date: normalizedDate,
+                    purchaseDate,
+                    obs: String(entry.obs || '').trim(),
+                    isInstallment: installmentTotal > 1 || Boolean(entry.isInstallment),
+                    installmentNumber,
+                    installmentTotal,
+                    installmentGroupId: String(entry.installmentGroupId || ''),
+                    totalPurchaseValue: Number(entry.totalPurchaseValue || value || 0),
+                    invoiceMonth,
+                    createdAt: entry.createdAt || new Date().toISOString()
+                };
+            };
+
             const getCardDueDay = (card) => {
                 const raw = parseInt(card?.dueDay, 10);
                 return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
             };
 
+            const getCardClosingDay = (card) => {
+                const raw = parseInt(card?.closingDay, 10);
+                return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
+            };
+
+            const getCardBestPurchaseDay = (card) => {
+                const raw = parseInt(card?.bestPurchaseDay, 10);
+                return Number.isInteger(raw) && raw >= 1 && raw <= 31 ? raw : null;
+            };
+
             const getCardInvoiceMonth = (entry, card) => {
-                if (!entry?.date) return currentYM;
-                const baseYM = String(entry.date).slice(0,7);
-                const dueDay = getCardDueDay(card);
-                if (!dueDay) return baseYM;
-                const entryDay = parseInt(String(entry.date).slice(8,10), 10);
+                if (entry?.invoiceMonth && /^\d{4}-\d{2}$/.test(String(entry.invoiceMonth))) return String(entry.invoiceMonth);
+                const purchaseDate = entry?.purchaseDate || entry?.date;
+                if (!purchaseDate) return currentYM;
+                const baseYM = String(purchaseDate).slice(0,7);
+                const cutoffDay = getCardClosingDay(card) || getCardDueDay(card);
+                if (!cutoffDay) return baseYM;
+                const entryDay = parseInt(String(purchaseDate).slice(8,10), 10);
                 if (!Number.isInteger(entryDay)) return baseYM;
-                return entryDay > dueDay ? addMonthsToYM(baseYM, 1) : baseYM;
+                return entryDay > cutoffDay ? addMonthsToYM(baseYM, 1) : baseYM;
             };
 
             const getCardInvoiceDueDate = (card, ym = currentYM) => {
@@ -3513,25 +3578,95 @@
                 return new Date(year, month - 1, Math.min(dueDay, maxDay), 12, 0, 0, 0);
             };
 
+            const isCardInvoicePaid = (card, ym = currentYM) => Array.isArray(card?.paidInvoiceMonths) && card.paidInvoiceMonths.includes(ym);
+
+            const toggleCardInvoicePaid = (cardId, ym = currentYM) => {
+                setCards(prev => prev.map(card => {
+                    if (card.id !== cardId) return card;
+                    const paidMonths = Array.isArray(card.paidInvoiceMonths) ? [...card.paidInvoiceMonths] : [];
+                    const nextPaidMonths = paidMonths.includes(ym)
+                        ? paidMonths.filter(month => month !== ym)
+                        : [...new Set([...paidMonths, ym])];
+                    return normalizeCard({ ...card, paidInvoiceMonths: nextPaidMonths });
+                }));
+            };
+
+            const getCardInvoiceStatus = (card, ym = currentYM) => {
+                const paid = isCardInvoicePaid(card, ym);
+                const dueDate = getCardInvoiceDueDate(card, ym);
+                const closingDay = getCardClosingDay(card) || getCardDueDay(card);
+                const [year, month] = String(ym || currentYM).split('-').map(Number);
+                const todayRef = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+                const closingDate = (year && month && closingDay)
+                    ? new Date(year, month - 1, Math.min(closingDay, new Date(year, month, 0).getDate()), 12, 0, 0, 0)
+                    : null;
+
+                if (paid) {
+                    return {
+                        paid: true,
+                        label: 'PAGA',
+                        pillClass: 'bg-green-500/15 text-green-400 border-green-500/30',
+                        hint: dueDate ? `Quitada • vencimento ${dueDate.toLocaleDateString('pt-BR')}` : 'Quitada'
+                    };
+                }
+
+                const ymCompare = compareYM(ym, currentYM);
+                let isOpen = ymCompare > 0;
+                if (ymCompare === 0) {
+                    if (!closingDate) isOpen = true;
+                    else isOpen = todayRef.getTime() <= closingDate.getTime();
+                }
+
+                if (isOpen) {
+                    return {
+                        paid: false,
+                        label: 'ABERTA',
+                        pillClass: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+                        hint: closingDate ? `Aberta até ${closingDate.toLocaleDateString('pt-BR')}` : 'Fatura em aberto'
+                    };
+                }
+
+                return {
+                    paid: false,
+                    label: 'FECHADA',
+                    pillClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+                    hint: dueDate ? `Fechada • vence ${dueDate.toLocaleDateString('pt-BR')}` : 'Fatura fechada'
+                };
+            };
+
+            const splitInstallmentValues = (totalValue, totalInstallments) => {
+                const cents = Math.round(Number(totalValue || 0) * 100);
+                const count = Math.max(1, parseInt(totalInstallments || 1, 10) || 1);
+                const base = cents // count;
+                const remainder = cents % count;
+                return Array.from({ length: count }, (_, index) => ((base + (index < remainder ? 1 : 0)) / 100));
+            };
+
             const saveCard = () => {
                 const name = String(cardForm.name || '').trim();
                 const brand = String(cardForm.brand || '').trim();
                 const final = String(cardForm.final || '').replace(/\D/g, '').slice(-4);
                 const limit = cardForm.limit === '' ? '' : Number(cardForm.limit || 0);
-                const dueDay = cardForm.dueDay === '' ? '' : Math.min(Math.max(parseInt(cardForm.dueDay || 0, 10), 1), 31);
+                const dueDay = normalizeCardDay(cardForm.dueDay);
+                const closingDay = normalizeCardDay(cardForm.closingDay);
+                const bestPurchaseDay = normalizeCardDay(cardForm.bestPurchaseDay);
                 if (!name) {
                     showToast('Informe o nome do cartão', 'warning');
                     return;
                 }
-                const payload = {
+                const existingCard = cards.find(card => card.id === editingCardId);
+                const payload = normalizeCard({
                     id: editingCardId || `card_${Date.now()}`,
                     name,
                     brand,
                     final,
                     limit: limit !== '' && limit > 0 ? limit : '',
                     dueDay: dueDay || '',
-                    createdAt: new Date().toISOString()
-                };
+                    closingDay: closingDay || '',
+                    bestPurchaseDay: bestPurchaseDay || '',
+                    paidInvoiceMonths: existingCard?.paidInvoiceMonths || [],
+                    createdAt: existingCard?.createdAt || new Date().toISOString()
+                });
                 setCards(prev => editingCardId
                     ? prev.map(card => card.id === editingCardId ? { ...card, ...payload } : card)
                     : [payload, ...prev]
@@ -3550,7 +3685,9 @@
                     brand: card.brand || '',
                     final: card.final || '',
                     limit: card.limit === '' ? '' : String(card.limit || ''),
-                    dueDay: card.dueDay === '' ? '' : String(card.dueDay || '')
+                    dueDay: card.dueDay === '' ? '' : String(card.dueDay || ''),
+                    closingDay: card.closingDay === '' ? '' : String(card.closingDay || ''),
+                    bestPurchaseDay: card.bestPurchaseDay === '' ? '' : String(card.bestPurchaseDay || '')
                 });
                 setShowCardForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3575,28 +3712,61 @@
                     return;
                 }
                 const value = Number(cardEntryForm.value || 0);
-                if (!cardEntryForm.description.trim() || value <= 0 || !cardEntryForm.date) {
+                const description = String(cardEntryForm.description || '').trim();
+                const purchaseDate = /^\d{4}-\d{2}-\d{2}$/.test(String(cardEntryForm.date || '')) ? String(cardEntryForm.date) : '';
+                if (!description || value <= 0 || !purchaseDate) {
                     showToast('Preencha descrição, valor e data', 'warning');
                     return;
                 }
-                const payload = {
-                    id: editingCardEntryId || `card_entry_${Date.now()}`,
+
+                const area = cardEntryForm.area === 'oficina' ? 'oficina' : 'pessoal';
+                const installmentTotal = cardEntryForm.isInstallment ? Math.max(2, parseInt(cardEntryForm.installmentTotal || 2, 10) || 2) : 1;
+                const basePayload = {
                     cardId: selectedCardId,
-                    area: cardEntryForm.area === 'oficina' ? 'oficina' : 'pessoal',
+                    area,
                     category: cardEntryForm.category,
-                    description: cardEntryForm.description.trim(),
+                    description,
                     value,
-                    date: cardEntryForm.date,
-                    obs: cardEntryForm.obs || ''
+                    date: purchaseDate,
+                    purchaseDate,
+                    obs: String(cardEntryForm.obs || '').trim(),
+                    isInstallment: installmentTotal > 1,
+                    installmentTotal,
+                    totalPurchaseValue: value,
+                    createdAt: new Date().toISOString()
                 };
-                setCardEntries(prev => editingCardEntryId
-                    ? prev.map(entry => entry.id === editingCardEntryId ? { ...entry, ...payload } : entry)
-                    : [payload, ...prev]
-                );
+
+                if (editingCardEntryId) {
+                    const currentEntry = cardEntries.find(entry => entry.id === editingCardEntryId) || {};
+                    const payload = normalizeCardEntry({
+                        ...currentEntry,
+                        ...basePayload,
+                        id: editingCardEntryId,
+                        installmentNumber: currentEntry.installmentNumber || 1,
+                        installmentGroupId: currentEntry.installmentGroupId || '',
+                        invoiceMonth: currentEntry.invoiceMonth || getCardInvoiceMonth({ ...currentEntry, ...basePayload }, selectedCard)
+                    });
+                    setCardEntries(prev => prev.map(entry => entry.id === editingCardEntryId ? payload : entry));
+                    showToast('✅ Lançamento do cartão atualizado', 'success');
+                } else {
+                    const groupId = installmentTotal > 1 ? `card_installment_${Date.now()}` : '';
+                    const baseInvoiceMonth = getCardInvoiceMonth({ ...basePayload, invoiceMonth: '' }, selectedCard);
+                    const values = splitInstallmentValues(value, installmentTotal);
+                    const generatedEntries = values.map((parcelValue, index) => normalizeCardEntry({
+                        ...basePayload,
+                        id: `card_entry_${Date.now()}_${index}`,
+                        value: parcelValue,
+                        installmentNumber: index + 1,
+                        installmentGroupId: groupId,
+                        invoiceMonth: addMonthsToYM(baseInvoiceMonth, index)
+                    }, index));
+                    setCardEntries(prev => [...generatedEntries, ...prev]);
+                    showToast(installmentTotal > 1 ? '✅ Compra parcelada lançada nas próximas faturas' : '✅ Gasto do cartão salvo', 'success');
+                }
+
                 setEditingCardEntryId(null);
                 setCardEntryForm(prev => ({ ...emptyCardEntryForm, area: prev.area, category: getCats(prev.area, 'saida')[0], date: prev.date }));
                 setShowCardEntryForm(false);
-                showToast(editingCardEntryId ? '✅ Lançamento do cartão atualizado' : '✅ Gasto do cartão salvo', 'success');
             };
 
             const editCardEntry = (entry) => {
@@ -3605,9 +3775,11 @@
                     area: entry.area || 'pessoal',
                     category: entry.category || getCats(entry.area || 'pessoal', 'saida')[0],
                     description: entry.description || '',
-                    value: String(entry.value || ''),
-                    date: entry.date || isoToday(),
-                    obs: entry.obs || ''
+                    value: String(entry.totalPurchaseValue || entry.value || ''),
+                    date: entry.purchaseDate || entry.date || isoToday(),
+                    obs: entry.obs || '',
+                    isInstallment: Boolean(entry.isInstallment),
+                    installmentTotal: String(entry.installmentTotal || 1)
                 });
                 setShowCardEntryForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3638,6 +3810,7 @@
                     .map(([month, entries]) => ({
                         month,
                         dueDate: getCardInvoiceDueDate(selectedCard, month),
+                        status: getCardInvoiceStatus(selectedCard, month),
                         entries: entries.sort((a,b) => `${b.date}_${b.id}`.localeCompare(`${a.date}_${a.id}`)),
                         summary: entries.reduce((acc, entry) => {
                             const value = Number(entry.value || 0);
@@ -3658,6 +3831,8 @@
                     return acc;
                 }, { total: 0, pessoal: 0, oficina: 0 });
             }, [selectedCardEntriesForMonth]);
+
+            const selectedCardMonthStatus = useMemo(() => getCardInvoiceStatus(selectedCard, selectedMonth), [selectedCard, selectedMonth, cards, currentYM]);
 
             const formatDateBR = (value) => {
                 if (!value) return '-';
@@ -4138,7 +4313,7 @@
                                 formatDateBR(entry.date),
                                 entry.area === 'oficina' ? 'Oficina' : 'Pessoal',
                                 entry.category || '-',
-                                entry.description || entry.obs || '-',
+                                `${entry.description || entry.obs || '-'}${entry.isInstallment ? ` • ${entry.installmentNumber}/${entry.installmentTotal}` : ''}`,
                                 moneyPdf(entry.value)
                             ]),
                             { emptyMessage: 'Sem compras nesta fatura.' }
@@ -5264,7 +5439,7 @@
                                                     onChange={e=>setCardForm(p=>({...p,final:e.target.value.replace(/\D/g,'').slice(-4)}))}
                                                     className="w-full p-3 rounded-xl text-sm" />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                            <div className="grid grid-cols-2 gap-3 mb-3">
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">LIMITE (opcional)</p>
                                                     <input type="number" inputMode="decimal" step="0.01" value={cardForm.limit} placeholder="0,00"
@@ -5275,6 +5450,20 @@
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">VENCIMENTO DA FATURA</p>
                                                     <input type="number" min="1" max="31" value={cardForm.dueDay} placeholder="Dia"
                                                         onChange={e=>setCardForm(p=>({...p,dueDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
+                                                        className="w-full p-3 rounded-xl text-sm" />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                                <div>
+                                                    <p className="text-[9px] text-gray-500 font-mono mb-1">FECHAMENTO</p>
+                                                    <input type="number" min="1" max="31" value={cardForm.closingDay} placeholder="Dia"
+                                                        onChange={e=>setCardForm(p=>({...p,closingDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
+                                                        className="w-full p-3 rounded-xl text-sm" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] text-gray-500 font-mono mb-1">MELHOR DIA DE COMPRA</p>
+                                                    <input type="number" min="1" max="31" value={cardForm.bestPurchaseDay} placeholder="Dia"
+                                                        onChange={e=>setCardForm(p=>({...p,bestPurchaseDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
                                             </div>
@@ -5310,6 +5499,8 @@
                                                                 </div>
                                                                 {card.limit ? <p className="text-[10px] text-gray-500 mt-1">Limite: {money(card.limit)}</p> : null}
                                                                 {card.dueDay ? <p className="text-[10px] text-gray-500 mt-1">Vencimento da fatura: dia {String(card.dueDay).padStart(2,'0')}</p> : null}
+                                                                {card.closingDay ? <p className="text-[10px] text-gray-500 mt-1">Fechamento: dia {String(card.closingDay).padStart(2,'0')}</p> : null}
+                                                                {card.bestPurchaseDay ? <p className="text-[10px] text-gray-500 mt-1">Melhor dia de compra: dia {String(card.bestPurchaseDay).padStart(2,'0')}</p> : null}
                                                             </div>
                                                         </button>
                                                         <div className="text-right flex-shrink-0">
@@ -5350,6 +5541,9 @@
                                         <div className="os-card p-3 rounded-xl text-center">
                                             <p className="text-[8px] text-gray-500 font-mono">FATURA {selectedMonth.split('-').reverse().join('/')}</p>
                                             <p className="font-usarmy text-red-400 text-sm">{money(selectedCardSummary.total)}</p>
+                                            <span className={`inline-flex mt-2 items-center justify-center px-2 py-1 rounded-full border text-[8px] font-usarmy ${selectedCardMonthStatus.pillClass}`}>
+                                                {selectedCardMonthStatus.label}
+                                            </span>
                                         </div>
                                         <div className="os-card p-3 rounded-xl text-center">
                                             <p className="text-[8px] text-gray-500 font-mono">PESSOAL</p>
@@ -5361,13 +5555,15 @@
                                         </div>
                                     </div>
 
-                                    {(selectedCard.brand || selectedCard.final || selectedCard.limit || selectedCard.dueDay) && (
+                                    {(selectedCard.brand || selectedCard.final || selectedCard.limit || selectedCard.dueDay || selectedCard.closingDay || selectedCard.bestPurchaseDay) && (
                                         <div className="os-card p-3 rounded-xl">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 {selectedCard.brand && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">{selectedCard.brand}</span>}
                                                 {selectedCard.final && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">FINAL {selectedCard.final}</span>}
                                                 {selectedCard.limit && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">LIMITE {money(selectedCard.limit)}</span>}
                                                 {selectedCard.dueDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">VENCE DIA {String(selectedCard.dueDay).padStart(2,'0')}</span>}
+                                                {selectedCard.closingDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">FECHA DIA {String(selectedCard.closingDay).padStart(2,'0')}</span>}
+                                                {selectedCard.bestPurchaseDay && <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">MELHOR COMPRA DIA {String(selectedCard.bestPurchaseDay).padStart(2,'0')}</span>}
                                             </div>
                                         </div>
                                     )}
@@ -5418,7 +5614,32 @@
                                             <p className="text-[9px] text-gray-500 font-mono mb-1">OBSERVAÇÃO (opcional)</p>
                                             <input type="text" value={cardEntryForm.obs} placeholder="Detalhes extras..."
                                                 onChange={e=>setCardEntryForm(prev=>({...prev,obs:e.target.value}))}
-                                                className="w-full p-3 rounded-xl mb-4 text-sm" />
+                                                className="w-full p-3 rounded-xl mb-3 text-sm" />
+                                            <div className="os-card p-3 rounded-xl mb-4 border border-white/5">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[9px] text-gray-500 font-mono mb-1">COMPRA PARCELADA</p>
+                                                        <p className="text-[10px] text-gray-500">Lança automaticamente nas próximas faturas do cartão.</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={()=>setCardEntryForm(prev=>({...prev,isInstallment:!prev.isInstallment, installmentTotal: !prev.isInstallment ? (prev.installmentTotal || '2') : '2'}))}
+                                                        className={`cross-area-toggle ${cardEntryForm.isInstallment ? 'bg-[#d4af37]' : 'bg-white/10'}`}
+                                                        aria-label="Marcar compra parcelada"
+                                                    >
+                                                        <span className="cross-area-toggle-knob" style={{ transform: cardEntryForm.isInstallment ? 'translateX(20px)' : 'translateX(0)' }}></span>
+                                                    </button>
+                                                </div>
+                                                {cardEntryForm.isInstallment && (
+                                                    <div className="mt-3">
+                                                        <p className="text-[9px] text-gray-500 font-mono mb-1">QUANTIDADE DE PARCELAS</p>
+                                                        <input type="number" min="2" max="36" value={cardEntryForm.installmentTotal}
+                                                            onChange={e=>setCardEntryForm(prev=>({...prev,installmentTotal:e.target.value.replace(/\D/g,'').slice(0,2) || '2'}))}
+                                                            className="w-full p-3 rounded-xl text-sm" />
+                                                        <p className="text-[10px] text-gray-500 mt-2">O valor será dividido e cada parcela vai para a fatura correta conforme o fechamento do cartão.</p>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button onClick={saveCardEntry} className="gold-gradient p-4 rounded-xl font-usarmy text-xs">{editingCardEntryId ? 'ATUALIZAR' : 'SALVAR GASTO'}</button>
                                                 <button onClick={()=>{ setEditingCardEntryId(null); setCardEntryForm(emptyCardEntryForm); setShowCardEntryForm(false); }} className="p-4 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
@@ -5435,12 +5656,24 @@
                                                 <div className="os-card p-3 rounded-xl" style={{border:'1px solid rgba(212,175,55,0.15)'}}>
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div>
-                                                            <p className="font-usarmy text-[#d4af37] text-xs">{monthLabel(group.month).toUpperCase()}</p>
-                                                            <p className="text-[9px] text-gray-500 font-mono">{group.dueDate ? `Fatura vence em ${group.dueDate.toLocaleDateString('pt-BR')}` : 'Sem vencimento definido'}</p>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <p className="font-usarmy text-[#d4af37] text-xs">{monthLabel(group.month).toUpperCase()}</p>
+                                                                <span className={`inline-flex items-center px-2 py-1 rounded-full border text-[8px] font-usarmy ${group.status.pillClass}`}>
+                                                                    {group.status.label}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[9px] text-gray-500 font-mono">{group.status.hint}</p>
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="font-usarmy text-white text-sm">{money(group.summary.total)}</p>
                                                             <p className="text-[8px] text-gray-500">Pessoal {money(group.summary.pessoal)} • Oficina {money(group.summary.oficina)}</p>
+                                                            <button
+                                                                onClick={()=>toggleCardInvoicePaid(selectedCard.id, group.month)}
+                                                                className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[8px] font-usarmy ${group.status.paid ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-300 bg-white/5'}`}
+                                                            >
+                                                                <i data-lucide={group.status.paid ? 'badge-check' : 'check-circle'} className="w-3 h-3"></i>
+                                                                {group.status.paid ? 'MARCADA PAGA' : 'MARCAR PAGA'}
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -5455,8 +5688,19 @@
                                                             <AreaBadge area={entry.area} size="xs" />
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{entry.category}</span>
                                                         </div>
-                                                        <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
-                                                        <p className="text-[10px] text-gray-500 mt-0.5">{entry.date?.split('-').reverse().join('/')} {entry.obs ? `• ${entry.obs}` : ''}</p>
+                                                        <div className="flex flex-wrap items-center gap-1">
+                                                            <p className="text-sm font-semibold text-white truncate max-w-full">{entry.description}</p>
+                                                            {entry.isInstallment && (
+                                                                <span className="text-[8px] px-1.5 py-0.5 rounded-full border border-[#d4af37]/30 text-[#d4af37] bg-[#d4af37]/10">
+                                                                    {entry.installmentNumber}/{entry.installmentTotal}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[10px] text-gray-500 mt-0.5">
+                                                            {(entry.purchaseDate || entry.date)?.split('-').reverse().join('/')}
+                                                            {entry.isInstallment ? ` • Parcela ${entry.installmentNumber}/${entry.installmentTotal}` : ''}
+                                                            {entry.obs ? ` • ${entry.obs}` : ''}
+                                                        </p>
                                                     </div>
                                                     <div className="text-right flex-shrink-0">
                                                         <p className="font-usarmy text-sm text-red-400">-{money(entry.value)}</p>
@@ -11250,54 +11494,72 @@ Alcantara Armeiro - Airsoft Repairs
     </script>
 
     <script>
-        // Blindagem GitHub Pages / PWA
-        window.addEventListener('error', (event) => {
-            console.log('Erro global capturado:', event.message || event.error || event);
-        });
-        window.addEventListener('unhandledrejection', (event) => {
-            console.log('Promise rejeitada sem tratamento:', event.reason || event);
-        });
-
+        // Service Worker para PWA
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
-                try {
-                    const regs = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(regs.map(async (reg) => {
-                        try {
-                            const url = String(reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || '');
-                            if (url.startsWith('blob:')) {
-                                await reg.unregister();
-                            }
-                        } catch (_) {}
-                    }));
+            const swCode = `
+                const CACHE_NAME = 'alcantara-v6-3';
+                const urlsToCache = [
+                    './',
+                    'https://cdn.tailwindcss.com',
+                    'https://unpkg.com/react@18/umd/react.production.min.js',
+                    'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+                    'https://unpkg.com/@babel/standalone/babel.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+                    'https://unpkg.com/lucide@latest',
+                    'https://i.ibb.co/LFtsfFp/logo.jpg'
+                ];
 
-                    const registration = await navigator.serviceWorker.register('./service-worker.js?v=github-blindado-1', {
-                        scope: './'
-                    });
+                self.addEventListener('install', event => {
+                    event.waitUntil(
+                        caches.open(CACHE_NAME)
+                            .then(cache => cache.addAll(urlsToCache))
+                            .catch(err => console.log('Cache failed:', err))
+                    );
+                    self.skipWaiting();
+                });
 
-                    if (registration.waiting) {
-                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                    }
+                self.addEventListener('fetch', event => {
+                    event.respondWith(
+                        caches.match(event.request)
+                            .then(response => {
+                                if (response) {
+                                    return response;
+                                }
+                                return fetch(event.request).catch(() => {
+                                    if (event.request.destination === 'image') {
+                                        return new Response('Offline', { status: 503 });
+                                    }
+                                });
+                            })
+                    );
+                });
 
-                    registration.addEventListener('updatefound', () => {
-                        const worker = registration.installing;
-                        if (!worker) return;
-                        worker.addEventListener('statechange', () => {
-                            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                                console.log('Nova versão do Service Worker instalada.');
-                            }
-                        });
-                    });
+                self.addEventListener('activate', event => {
+                    event.waitUntil(
+                        caches.keys().then(cacheNames => {
+                            return Promise.all(
+                                cacheNames.map(cacheName => {
+                                    if (cacheName !== CACHE_NAME) {
+                                        return caches.delete(cacheName);
+                                    }
+                                })
+                            );
+                        })
+                    );
+                    self.clients.claim();
+                });
+            `;
 
-                    navigator.serviceWorker.addEventListener('controllerchange', () => {
-                        console.log('Service Worker atualizado e controlando a página.');
-                    });
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
 
+            navigator.serviceWorker.register(swUrl)
+                .then(registration => {
                     console.log('Service Worker registrado:', registration.scope);
-                } catch (error) {
+                })
+                .catch(error => {
                     console.log('Falha ao registrar Service Worker:', error);
-                }
-            });
+                });
         }
 
         // Inicializa ícones Lucide
@@ -11313,5 +11575,9 @@ Alcantara Armeiro - Airsoft Repairs
             }, 500);
         });
     </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
