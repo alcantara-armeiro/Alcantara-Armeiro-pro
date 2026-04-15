@@ -910,7 +910,7 @@
             .map((bill, index) => normalizeFixedBill(bill, index))
             .filter(Boolean);
         const normalizePaidMonths = (value) => Array.isArray(value)
-            ? [...new Set(value.filter(m => /^\d{4}-\d{2}$/.test(String(m || ''))))]
+            ? [...new Set(value.filter(m => /^\d{4}-\d{2}$/.test(String(m))))]
             : [];
 
         // ========== DB CONTEXT (estado global reativo) ==========
@@ -3353,7 +3353,7 @@
                     if (!billId || !billMonth) { showToast('Conta fixa vinculada inválida.','warning'); return; }
                     setTransactions(prev => prev.filter(t => t.id !== id));
                     setFixedBills(prev => normalizeFixedBills(prev.map(b => String(b.id) === String(billId)
-                        ? { ...b, paidMonths: normalizePaidMonths(b.paidMonths).filter(m => m !== billMonth) }
+                        ? { ...b, paidMonths: normalizePaidMonths(b?.paidMonths).filter(m => m !== billMonth) }
                         : b
                     )));
                     setConfirmDelete(null);
@@ -3420,11 +3420,11 @@
                 const alreadyPaid = isBillPaidForMonth(bill, ym);
 
                 if (alreadyPaid) {
-                    setFixedBills(prev => normalizeFixedBills(prev.map(item => item.id === bill.id
-                        ? { ...item, paidMonths: normalizePaidMonths(item.paidMonths).filter(m => m !== ym) }
+                    setFixedBills(prev => normalizeFixedBills(prev.map(item => String(item.id) === String(bill.id)
+                        ? { ...item, paidMonths: normalizePaidMonths(item?.paidMonths).filter(m => m !== ym) }
                         : item
                     )));
-                    setTransactions(prev => prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
+                    setTransactions(prev => asArray(prev).filter(t => !(t?.syncSource === 'fixed_bill' && String(t?.syncId) === syncId)));
                     showToast('↩️ Conta desmarcada como paga','info');
                     return;
                 }
@@ -3444,8 +3444,8 @@
                     isPersonalExpense: false
                 };
 
-                setFixedBills(prev => normalizeFixedBills(prev.map(item => item.id === bill.id
-                    ? { ...item, paidMonths: [...new Set([...normalizePaidMonths(item.paidMonths), ym])] }
+                setFixedBills(prev => normalizeFixedBills(prev.map(item => String(item.id) === String(bill.id)
+                    ? { ...item, paidMonths: [...new Set([...normalizePaidMonths(item?.paidMonths), ym])] }
                     : item
                 )));
                 setTransactions(prev => {
