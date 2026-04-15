@@ -2702,6 +2702,37 @@
                 }
             };
 
+            const BankUiIcon = ({ name = 'file-text', color = '#d4af37', size = 16, strokeWidth = 2 }) => {
+                const common = {
+                    width: size,
+                    height: size,
+                    viewBox: '0 0 24 24',
+                    fill: 'none',
+                    stroke: color,
+                    strokeWidth,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
+                    'aria-hidden': 'true'
+                };
+
+                switch (name) {
+                    case 'bell-ring':
+                        return <svg {...common}><path d="M10.3 21a2 2 0 0 0 3.4 0"></path><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M4 2C2.8 3.7 2 5.7 2 8"></path><path d="M22 8c0-2.3-.8-4.3-2-6"></path></svg>;
+                    case 'user':
+                        return <svg {...common}><path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>;
+                    case 'wrench':
+                        return <svg {...common}><path d="M14.7 6.3a4 4 0 0 0 5 5l-8.4 8.4a2 2 0 1 1-2.8-2.8l8.4-8.4a4 4 0 0 0-5-5l2.2 2.2-2.8 2.8-2.2-2.2a4 4 0 0 0 5.6 5.6"></path></svg>;
+                    case 'check':
+                        return <svg {...common}><path d="M20 6 9 17l-5-5"></path></svg>;
+                    case 'pencil':
+                        return <svg {...common}><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>;
+                    case 'trash-2':
+                        return <svg {...common}><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>;
+                    default:
+                        return <FixedBillIcon icon="file-text" color={color} size={size} strokeWidth={strokeWidth} />;
+                }
+            };
+
             // ── Persist ────────────────────────────────────────────────────────
             useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(asArray(transactions))); }, [transactions]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
@@ -3005,6 +3036,7 @@
             }, [fixedBills, currentYM]);
 
             const urgentCount = billsAlerts.filter(b=>!b.paid && (b.urgent||b.overdue)).length;
+            const alertBellCount = billsAlerts.filter(b=>!b.paid && (b.overdue || b.daysUntil === 0)).length;
 
             // ── Filtered transactions ─────────────────────────────────────────
             const filteredTransactions = useMemo(() => {
@@ -4287,13 +4319,16 @@
                             <p className="text-[9px] text-cyan-400 font-mono"></p>
                         </div>
                         <div className="relative">
-                            {urgentCount > 0 && (
-                                <button onClick={()=>setTab('fixas')} className="btn-icon text-yellow-400 relative" aria-label="Alertas">
-                                    <i data-lucide="bell-ring" className="w-5 h-5"></i>
-                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">{urgentCount}</span>
-                                </button>
-                            )}
-                            {urgentCount === 0 && <div className="w-11"></div>}
+                            <button
+                                onClick={()=>setTab('fixas')}
+                                className={`btn-icon relative ${alertBellCount > 0 ? 'text-yellow-400' : 'text-gray-500'}`}
+                                aria-label="Alertas de contas fixas"
+                                title="Alertas de contas fixas">
+                                <BankUiIcon name="bell-ring" size={20} color={alertBellCount > 0 ? '#facc15' : '#6b7280'} />
+                                {alertBellCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">{alertBellCount}</span>
+                                )}
+                            </button>
                         </div>
                     </div>
 
@@ -4328,8 +4363,8 @@
                         <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a1a3e 0%,#0f0f2d 100%)',border:'1px solid rgba(99,102,241,0.3)'}}>
                             <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10" style={{background:'#6366f1',transform:'translate(30%,-30%)'}}></div>
                             <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{background:'rgba(99,102,241,0.2)'}}>
-                                    <i data-lucide="user" className="w-3.5 h-3.5" style={{color:'#6366f1'}}></i>
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(99,102,241,0.2)'}}>
+                                    <BankUiIcon name="user" size={14} color="#6366f1" />
                                 </div>
                                 <span className="text-[9px] font-usarmy" style={{color:'#818cf8'}}>PESSOAL</span>
                             </div>
@@ -4345,8 +4380,8 @@
                         <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a1500 0%,#0f0d00 100%)',border:'1px solid rgba(212,175,55,0.3)'}}>
                             <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10" style={{background:'#d4af37',transform:'translate(30%,-30%)'}}></div>
                             <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{background:'rgba(212,175,55,0.15)'}}>
-                                    <i data-lucide="wrench" className="w-3.5 h-3.5" style={{color:'#d4af37'}}></i>
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(212,175,55,0.15)'}}>
+                                    <BankUiIcon name="wrench" size={14} color="#d4af37" />
                                 </div>
                                 <span className="text-[9px] font-usarmy" style={{color:'#d4af37'}}>OFICINA</span>
                             </div>
@@ -5272,14 +5307,14 @@
                                                             className={`btn-icon w-8 h-8 ${paid ? 'text-emerald-400' : 'text-gray-400'}`}
                                                             aria-label={paid ? 'Desmarcar como paga' : 'Marcar como paga'}
                                                             title={paid ? 'Desmarcar como paga' : 'Marcar como paga'}>
-                                                            <i data-lucide="check" className="w-3.5 h-3.5"></i>
+                                                            <BankUiIcon name="check" size={14} color={paid ? '#22c55e' : '#9ca3af'} />
                                                         </button>
                                                         <button onClick={()=>editBill(b)} className="btn-icon text-[#d4af37] w-8 h-8" aria-label="Editar">
-                                                            <i data-lucide="pencil" className="w-3.5 h-3.5"></i>
+                                                            <BankUiIcon name="pencil" size={14} color="#d4af37" />
                                                         </button>
                                                         <button onClick={()=>removeFixedBill(b.id)}
                                                             className="btn-icon text-red-500 w-8 h-8" aria-label="Excluir">
-                                                            <i data-lucide="trash-2" className="w-3.5 h-3.5"></i>
+                                                            <BankUiIcon name="trash-2" size={14} color="#ef4444" />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -11417,6 +11452,7 @@ Alcantara Armeiro - Airsoft Repairs
             }, 500);
         });
     </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
