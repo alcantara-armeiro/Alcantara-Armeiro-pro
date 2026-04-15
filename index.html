@@ -877,16 +877,6 @@
 
         const isoToday = () => new Date().toISOString().slice(0,10);
         const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
-        const normalizeDateInputValue = (value) => {
-            const raw = String(value || '').trim();
-            if (!raw) return '';
-            if (isIsoDate(raw)) return raw;
-            const pt = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-            if (pt) return `${pt[3]}-${pt[2]}-${pt[1]}`;
-            const isoDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
-            if (isoDateTime) return `${isoDateTime[1]}-${isoDateTime[2]}-${isoDateTime[3]}`;
-            return '';
-        };
         const asArray = (value) => Array.isArray(value) ? value : [];
         const normalizeBudgets = (value) => ({
             personal: Number(value?.personal) > 0 ? Number(value.personal) : 2500,
@@ -894,24 +884,20 @@
         });
         const normalizeFixedBill = (bill, fallbackIndex = 0) => {
             if (!bill || typeof bill !== 'object') return null;
-            const normalizedDate = normalizeDateInputValue(bill.date) || isoToday();
-            const fallbackDay = parseInt(String(normalizedDate).slice(8,10), 10) || 1;
-            const parsedDay = parseInt(bill.day ?? fallbackDay, 10);
+            const rawDate = isIsoDate(bill.date) ? bill.date : isoToday();
+            const parsedDay = parseInt(bill.day ?? rawDate.slice(8,10), 10);
             const safeDay = Number.isInteger(parsedDay) && parsedDay >= 1 && parsedDay <= 31
                 ? parsedDay
-                : fallbackDay;
-            const baseYm = String(normalizedDate).slice(0,7);
-            const safeDate = `${baseYm}-${String(safeDay).padStart(2,'0')}`;
+                : parseInt(rawDate.slice(8,10), 10);
             const name = String(bill.name || '').trim();
-            const rawValue = typeof bill.value === 'string' ? bill.value.replace(',', '.') : bill.value;
-            const value = Number(rawValue || 0);
+            const value = Number(bill.value || 0);
             if (!name || value <= 0) return null;
             return {
                 ...bill,
                 id: String(bill.id || `fixed_${Date.now()}_${fallbackIndex}`),
                 name,
                 value,
-                date: safeDate,
+                date: isIsoDate(bill.date) ? bill.date : `${rawDate.slice(0,7)}-${String(safeDay).padStart(2,'0')}`,
                 day: safeDay,
                 area: bill.area === 'pessoal' ? 'pessoal' : 'oficina',
                 active: bill.active !== false,
@@ -923,6 +909,9 @@
         const normalizeFixedBills = (value) => asArray(value)
             .map((bill, index) => normalizeFixedBill(bill, index))
             .filter(Boolean);
+        const getSafePaidMonths = (value) => Array.isArray(value)
+            ? value.filter(m => /^\d{4}-\d{2}$/.test(String(m)))
+            : [];
 
         // ========== DB CONTEXT (estado global reativo) ==========
         const DbContext = React.createContext(null);
@@ -3346,9 +3335,9 @@
                     const billId = syncMatch ? syncMatch[1] : null;
                     const billMonth = syncMatch ? syncMatch[2] : null;
                     if (!billId || !billMonth) { showToast('Conta fixa vinculada inválida.','warning'); return; }
-                    setTransactions(prev => prev.filter(t => t.id !== id));
-                    setFixedBills(prev => prev.map(b => String(b.id) === String(billId)
-                        ? { ...b, paidMonths: (b.paidMonths || []).filter(m => m !== billMonth) }
+                    setTransactions(prev => asArray(prev).filter(t => t.id !== id));
+                    setFixedBills(prev => normalizeFixedBills(prev).map(b => String(b.id) === String(billId)
+                        ? { ...b, paidMonths: getSafePaidMonths(b.paidMonths).filter(m => m !== billMonth) }
                         : b
                     ));
                     setConfirmDelete(null);
@@ -3362,34 +3351,31 @@
 
             // ── Fixed bills ────────────────────────────────────────────────────
             const saveBill = () => {
-                const value = parseFloat(String(billForm.value || '').replace(',', '.'));
-                const billDate = normalizeDateInputValue(billForm.date);
-                const day = parseInt(String(billDate || '').slice(8,10), 10);
-                if (!String(billForm.name || '').trim() || !value || !billDate || !day || day < 1 || day > 31) {
+                const normalizedValueRaw = String(billForm.value || '').replace(',', '.').trim();
+                const value = parseFloat(normalizedValueRaw);
+                const billDate = normalizeIsoDateValue(billForm.date) || billForm.date;
+                const day = parseInt((billDate || '').slice(8,10), 10);
+                if (!billForm.name.trim() || !Number.isFinite(value) || value <= 0 || !billDate || !day || day < 1 || day > 31) {
                     showToast('Preencha nome, valor e data válida','warning'); return;
                 }
-                const existingBill = fixedBills.find(b => String(b.id) === String(editingBillId));
+                const existingBill = normalizeFixedBill(fixedBills.find(b => b.id === editingBillId) || null);
                 const payload = normalizeFixedBill({
-                    ...existingBill,
+                    ...(existingBill || {}),
                     id: editingBillId || Date.now().toString(),
-                    name: String(billForm.name || '').trim(),
+                    name: billForm.name.trim(),
                     value,
                     date: billDate,
                     day,
                     area: billForm.area || 'oficina',
                     active: existingBill ? existingBill.active !== false : true,
-                    paidMonths: Array.isArray(existingBill?.paidMonths) ? existingBill.paidMonths : []
+                    paidMonths: getSafePaidMonths(existingBill?.paidMonths)
                 });
                 if (!payload) {
                     showToast('Não foi possível salvar a conta fixa','error'); return;
                 }
-                setFixedBills(prev => {
-                    const normalizedPrev = normalizeFixedBills(prev);
-                    const next = editingBillId
-                        ? normalizedPrev.map(b => String(b.id) === String(editingBillId) ? payload : b)
-                        : [payload, ...normalizedPrev];
-                    return normalizeFixedBills(next);
-                });
+                setFixedBills(prev => editingBillId
+                    ? prev.map(b=>b.id===editingBillId?payload:b)
+                    : [payload,...normalizeFixedBills(prev)]);
                 setEditingBillId(null);
                 setBillForm({name:'',value:'',date:isoToday(),area:'oficina',active:true});
                 setShowBillForm(false);
@@ -3397,14 +3383,13 @@
             };
 
             const editBill = (b) => {
-                const safeDate = normalizeDateInputValue(b?.date) || `${currentYM}-${String(Math.min(Math.max(parseInt(b?.day, 10) || 1, 1), 31)).padStart(2,'0')}`;
                 setEditingBillId(b.id);
                 setBillForm({
-                    name:String(b?.name || ''),
-                    value:String(b?.value ?? ''),
-                    date:safeDate,
-                    area:b?.area||'oficina',
-                    active:b?.active!==false
+                    name:b.name,
+                    value:String(b.value),
+                    date:isIsoDate(b.date) ? b.date : `${currentYM}-${String(Math.min(Math.max(parseInt(b.day, 10) || 1, 1), 31)).padStart(2,'0')}`,
+                    area:b.area||'oficina',
+                    active:b.active!==false
                 });
                 setShowBillForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3420,11 +3405,14 @@
                 const alreadyPaid = isBillPaidForMonth(bill, ym);
 
                 if (alreadyPaid) {
-                    setFixedBills(prev => prev.map(item => item.id === bill.id
-                        ? { ...item, paidMonths: (item.paidMonths || []).filter(m => m !== ym) }
+                    setFixedBills(prev => normalizeFixedBills(prev).map(item => item.id === bill.id
+                        ? {
+                            ...item,
+                            paidMonths: getSafePaidMonths(item.paidMonths).filter(m => m !== ym)
+                        }
                         : item
                     ));
-                    setTransactions(prev => prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
+                    setTransactions(prev => asArray(prev).filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
                     showToast('↩️ Conta desmarcada como paga','info');
                     return;
                 }
@@ -3444,12 +3432,15 @@
                     isPersonalExpense: false
                 };
 
-                setFixedBills(prev => prev.map(item => item.id === bill.id
-                    ? { ...item, paidMonths: [...new Set([...(item.paidMonths || []), ym])] }
+                setFixedBills(prev => normalizeFixedBills(prev).map(item => item.id === bill.id
+                    ? {
+                        ...item,
+                        paidMonths: [...new Set([...(getSafePaidMonths(item.paidMonths)), ym])]
+                    }
                     : item
                 ));
                 setTransactions(prev => {
-                    const cleaned = prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId));
+                    const cleaned = asArray(prev).filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId));
                     return [autoTransaction, ...cleaned];
                 });
                 showToast('✅ Conta marcada como paga e lançada no extrato','success');
@@ -5159,7 +5150,7 @@
                                 {fixedBills.length === 0 && (
                                     <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA</div>
                                 )}
-                                {normalizeFixedBills(fixedBills).sort((a,b)=>parseInt(a?.day || 0)-parseInt(b?.day || 0)).map(b => {
+                                {[...fixedBills].sort((a,b)=>parseInt(a.day)-parseInt(b.day)).map(b => {
                                     const meta = AREA_META[b.area||'oficina'];
                                     const status = getBillMonthStatus(b, selectedMonth);
                                     const { paid, urgent, overdue, waiting, daysUntil, dueDate, started } = status;
