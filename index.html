@@ -427,6 +427,43 @@
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
 
 
+        .fixed-chart-grid {
+            display: flex;
+            align-items: end;
+            gap: 6px;
+            height: 74px;
+        }
+        .fixed-chart-bar-wrap {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .fixed-chart-bar-track {
+            width: 100%;
+            height: 54px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.04);
+            display: flex;
+            align-items: end;
+            overflow: hidden;
+        }
+        .fixed-chart-bar-fill {
+            width: 100%;
+            border-radius: 999px;
+            background: linear-gradient(180deg, rgba(212,175,55,0.95) 0%, rgba(184,134,11,0.80) 100%);
+            box-shadow: 0 0 12px rgba(212,175,55,0.14);
+            transition: height 0.35s ease;
+        }
+        .fixed-chart-label {
+            font-size: 8px;
+            color: #6b7280;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.04em;
+        }
+
         .dashboard-premium-btn {
             position: relative;
             overflow: hidden;
@@ -608,7 +645,7 @@
 
             const cloneValue = (v) => v === undefined ? null : String(v);
             const keysToMirror = [
-                'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
+                'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2',
                 'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
                 'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
                 'alcantara_auth','alcantara_equipment_history'
@@ -760,7 +797,7 @@
                 },
                 async compactData() {
                     const keys = [
-                        'alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_cards','alcantara_bank_card_entries',
+                        'alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2','alcantara_bank_cards','alcantara_bank_card_entries',
                         'alcantara_bank_budgets','alcantara_os','alcantara_catalog','alcantara_products',
                         'gf_fornecedores','gf_pecas','alcantara_assistencias_registros','alcantara_customer_notes',
                         'alcantara_equipment_history'
@@ -827,7 +864,7 @@
         };
 
         const APP_BACKUP_KEYS = [
-            'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
+            'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2',
             'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
             'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
             'alcantara_auth','alcantara_equipment_history'
@@ -1000,6 +1037,95 @@
         const normalizeFixedBills = (value) => asArray(value)
             .map((bill, index) => normalizeFixedBill(bill, index))
             .filter(Boolean);
+
+
+        const FIXED_BILLS_STORAGE_KEY_V2 = 'alcantara_bank_fixed_v2';
+        const getFixedBillsStoreV2 = () => {
+            const parsed = safeJsonParse(SafeStorage.getItem(FIXED_BILLS_STORAGE_KEY_V2), {});
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        };
+        const saveFixedBillsStoreV2 = (data) => {
+            SafeStorage.setItem(FIXED_BILLS_STORAGE_KEY_V2, JSON.stringify(data || {}));
+        };
+        const ensureFixedBillsMonthV2 = (data, ym) => {
+            const safe = data && typeof data === 'object' && !Array.isArray(data) ? { ...data } : {};
+            const [year, month] = String(ym || '').split('-');
+            if (!/^\d{4}$/.test(String(year || '')) || !/^\d{2}$/.test(String(month || ''))) return safe;
+            if (!safe[year] || typeof safe[year] !== 'object' || Array.isArray(safe[year])) safe[year] = {};
+            if (!Array.isArray(safe[year][month])) safe[year][month] = [];
+            return safe;
+        };
+        const getFixedBillsForMonthV2 = (ym) => {
+            const [year, month] = String(ym || '').split('-');
+            if (!/^\d{4}$/.test(String(year || '')) || !/^\d{2}$/.test(String(month || ''))) return [];
+            const store = ensureFixedBillsMonthV2(getFixedBillsStoreV2(), ym);
+            return normalizeFixedBills(store?.[year]?.[month] || []).map((bill) => ({
+                ...bill,
+                status: String(bill?.status || 'pendente').toLowerCase() === 'paga' ? 'paga' : 'pendente'
+            }));
+        };
+        const setFixedBillsForMonthV2 = (ym, bills) => {
+            const normalizedBills = normalizeFixedBills(bills).map((bill) => ({
+                ...bill,
+                status: String(bill?.status || 'pendente').toLowerCase() === 'paga' ? 'paga' : 'pendente'
+            }));
+            const [year, month] = String(ym || '').split('-');
+            const nextStore = ensureFixedBillsMonthV2(getFixedBillsStoreV2(), ym);
+            nextStore[year][month] = normalizedBills;
+            saveFixedBillsStoreV2(nextStore);
+            SafeStorage.setItem('alcantara_bank_fixed', JSON.stringify(normalizedBills));
+            return normalizedBills;
+        };
+        const listFixedBillsYearsV2 = (currentYear) => {
+            const store = getFixedBillsStoreV2();
+            const years = new Set(Object.keys(store || {}).filter(y => /^\d{4}$/.test(String(y))));
+            if (currentYear) years.add(String(currentYear));
+            return [...years].sort((a,b) => b.localeCompare(a));
+        };
+        const migrateFixedBillsToV2 = (currentYM) => {
+            let store = getFixedBillsStoreV2();
+            store = ensureFixedBillsMonthV2(store, currentYM);
+            const [year, month] = String(currentYM || '').split('-');
+            if ((store?.[year]?.[month] || []).length === 0) {
+                const legacy = normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), []));
+                if (legacy.length > 0) {
+                    store[year][month] = legacy.map((bill) => ({
+                        ...bill,
+                        status: (Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(currentYM)) ? 'paga' : 'pendente'
+                    }));
+                }
+            }
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear - 1; y <= currentYear + 1; y += 1) {
+                store = ensureFixedBillsMonthV2(store, `${y}-01`);
+            }
+            saveFixedBillsStoreV2(store);
+            return store;
+        };
+        const buildBillDateFromMonth = (ym, day) => {
+            const [year, month] = String(ym || '').split('-').map(Number);
+            if (!year || !month) return isoToday();
+            const maxDay = new Date(year, month, 0).getDate();
+            const safeDay = Math.min(Math.max(parseInt(day, 10) || 1, 1), maxDay);
+            return `${year}-${String(month).padStart(2,'0')}-${String(safeDay).padStart(2,'0')}`;
+        };
+        const getPreviousMonthYM = (ym) => {
+            const [year, month] = String(ym || '').split('-').map(Number);
+            if (!year || !month) return '';
+            const prev = new Date(year, month - 2, 1, 12, 0, 0, 0);
+            return `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
+        };
+        const getFixedBillMonthlyChartData = (year) => {
+            const store = getFixedBillsStoreV2();
+            return Array.from({ length: 12 }, (_, index) => {
+                const month = String(index + 1).padStart(2, '0');
+                const bills = normalizeFixedBills(store?.[year]?.[month] || []);
+                return {
+                    month,
+                    total: bills.filter(b => b.active !== false).reduce((sum, bill) => sum + Number(bill.value || 0), 0)
+                };
+            });
+        };
 
         // ========== DB CONTEXT (estado global reativo) ==========
         const DbContext = React.createContext(null);
@@ -2541,7 +2667,8 @@
             // ── State ──────────────────────────────────────────────────────────
             const [tab,            setTab]            = useState(() => localStorage.getItem('alcantara_bank_quick_tab') || 'dashboard');
             const [transactions,   setTransactions]   = useState(() => normalizeBankTransactions(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])));
-            const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])));
+            const [fixedBills,     setFixedBills]     = useState(() => { migrateFixedBillsToV2(currentYM); return getFixedBillsForMonthV2(currentYM); });
+            const [fixedBillsLoadedMonth, setFixedBillsLoadedMonth] = useState(currentYM);
             const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
             const [withdrawalLimit, setWithdrawalLimit] = useState(() => {
                 const saved = Number(safeJsonParse(SafeStorage.getItem('alcantara_bank_withdrawal_limit'), 800));
@@ -2563,6 +2690,11 @@
             };
             const [form, setForm] = useState(emptyForm);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
+            const selectedBillYear = selectedMonth.slice(0,4);
+            const selectedBillMonth = selectedMonth.slice(5,7);
+            const fixedBillYears = useMemo(() => listFixedBillsYearsV2(new Date().getFullYear()), [selectedMonth, fixedBills.length]);
+            const fixedBillChartData = useMemo(() => getFixedBillMonthlyChartData(selectedBillYear), [selectedBillYear, fixedBills.length]);
+            const fixedBillChartMax = useMemo(() => Math.max(...fixedBillChartData.map(item => Number(item.total || 0)), 1), [fixedBillChartData]);
             const [cards,          setCards]          = useState(() => normalizeCards(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
             const [cardEntries,    setCardEntries]    = useState(() => normalizeCardEntries(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
             const [selectedCardId, setSelectedCardId] = useState(null);
@@ -2866,12 +2998,26 @@
 
             // ── Persist ────────────────────────────────────────────────────────
             useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(normalizeBankTransactions(transactions))); }, [transactions]);
-            useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
+            useEffect(() => { if (fixedBillsLoadedMonth !== selectedMonth) return; setFixedBillsForMonthV2(selectedMonth, fixedBills); }, [fixedBills, selectedMonth, fixedBillsLoadedMonth]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_withdrawal_limit', JSON.stringify(Number(withdrawalLimit) > 0 ? Number(withdrawalLimit) : 800)); }, [withdrawalLimit]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(normalizeCards(cards)));           }, [cards]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(normalizeCardEntries(cardEntries)));            }, [cardEntries]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_debt_plan',     JSON.stringify(normalizeDebtPlanState(debtPlanData))); }, [debtPlanData]);
+
+            useEffect(() => {
+                migrateFixedBillsToV2(currentYM);
+            }, []);
+
+            useEffect(() => {
+                migrateFixedBillsToV2(selectedMonth);
+                setFixedBills(getFixedBillsForMonthV2(selectedMonth));
+                setFixedBillsLoadedMonth(selectedMonth);
+                setBillForm(prev => ({
+                    ...prev,
+                    date: buildBillDateFromMonth(selectedMonth, isIsoDate(prev?.date) ? prev.date.slice(8,10) : 1)
+                }));
+            }, [selectedMonth]);
 
             // ── Icon refresh ───────────────────────────────────────────────────
             // No Bank não podemos reexecutar lucide.createIcons(), porque o Lucide
@@ -3116,20 +3262,22 @@
             }, [budgets, monthlySummary]);
 
             // ── Fixed bills due alert ──────────────────────────────────────────
-            const isBillPaidForMonth = (bill, ym = currentYM) => Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(ym);
+            const isBillPaidForMonth = (bill, ym = currentYM) => String(bill?.status || 'pendente').toLowerCase() === 'paga';
             const getFixedBillSyncId = (billId, ym = currentYM) => `fixed_bill_${billId}_${ym}`;
             const getBillStartMonth = (bill) => {
                 if (isIsoDate(bill?.date)) return bill.date.slice(0,7);
-                return currentYM;
+                return selectedMonth;
             };
             const compareYM = (a, b) => String(a || '').localeCompare(String(b || ''));
             const getBillDueDateForMonth = (bill, ym = currentYM) => {
-                if (!bill || !ym || compareYM(ym, getBillStartMonth(bill)) < 0) return null;
-                const [year, month] = String(ym).split('-').map(Number);
-                if (!year || !month) return null;
-                const maxDay = new Date(year, month, 0).getDate();
-                const dueDay = Math.min(Math.max(parseInt(bill.day, 10) || 1, 1), maxDay);
-                return new Date(year, month - 1, dueDay, 12, 0, 0, 0);
+                if (!bill || !ym) return null;
+                if (isIsoDate(bill?.date)) {
+                    const [year, month] = ym.split('-').map(Number);
+                    const dueDay = parseInt(String(bill.date).slice(8,10), 10) || parseInt(bill.day, 10) || 1;
+                    const maxDay = new Date(year, month, 0).getDate();
+                    return new Date(year, month - 1, Math.min(dueDay, maxDay), 12, 0, 0, 0);
+                }
+                return null;
             };
             const getBillMonthStatus = (bill, ym = currentYM) => {
                 const dueDate = getBillDueDateForMonth(bill, ym);
@@ -3579,7 +3727,7 @@
                     if (!billId || !billMonth) { showToast('Conta fixa vinculada inválida.','warning'); return; }
                     setTransactions(prev => prev.filter(t => t.id !== id));
                     setFixedBills(prev => prev.map(b => String(b.id) === String(billId)
-                        ? { ...b, paidMonths: (b.paidMonths || []).filter(m => m !== billMonth) }
+                        ? { ...b, status: 'pendente' }
                         : b
                     ));
                     setConfirmDelete(null);
@@ -3605,11 +3753,11 @@
                     id: editingBillId || Date.now().toString(),
                     name: billForm.name.trim(),
                     value,
-                    date: billDate,
+                    date: buildBillDateFromMonth(selectedMonth, day),
                     day,
                     area: billForm.area || 'oficina',
                     active: existingBill ? existingBill.active !== false : true,
-                    paidMonths: existingBill?.paidMonths || []
+                    status: existingBill?.status === 'paga' ? 'paga' : 'pendente'
                 });
                 if (!payload) {
                     showToast('Não foi possível salvar a conta fixa','error'); return;
@@ -3628,7 +3776,7 @@
                 setBillForm({
                     name:b.name,
                     value:String(b.value),
-                    date:isIsoDate(b.date) ? b.date : `${currentYM}-${String(Math.min(Math.max(parseInt(b.day, 10) || 1, 1), 31)).padStart(2,'0')}`,
+date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min(Math.max(parseInt(b.day, 10) || 1, 1), 31)),
                     area:b.area||'oficina',
                     active:b.active!==false
                 });
@@ -3638,16 +3786,12 @@
 
             const toggleBillPaid = (bill) => {
                 const ym = selectedMonth;
-                if (compareYM(ym, getBillStartMonth(bill)) < 0) {
-                    showToast('Essa conta ainda não iniciou no mês selecionado.','info');
-                    return;
-                }
                 const syncId = getFixedBillSyncId(bill.id, ym);
                 const alreadyPaid = isBillPaidForMonth(bill, ym);
 
                 if (alreadyPaid) {
                     setFixedBills(prev => prev.map(item => item.id === bill.id
-                        ? { ...item, paidMonths: asArray(item.paidMonths).filter(m => m !== ym) }
+                        ? { ...item, status: 'pendente' }
                         : item
                     ));
                     setTransactions(prev => prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
@@ -3671,7 +3815,7 @@
                 };
 
                 setFixedBills(prev => prev.map(item => item.id === bill.id
-                    ? { ...item, paidMonths: [...new Set([...asArray(item.paidMonths), ym])] }
+                    ? { ...item, status: 'paga' }
                     : item
                 ));
                 setTransactions(prev => {
@@ -4037,7 +4181,7 @@
                 const workshopIncome = workshopTransactions.filter(item => item.type === 'entrada');
                 const workshopExpense = workshopTransactions.filter(item => item.type !== 'entrada');
                 const fixedBillsForMonth = fixedBills
-                    .filter(bill => (bill?.active !== false) && compareYM(selectedMonth, getBillStartMonth(bill)) >= 0)
+                    .filter(bill => bill?.active !== false)
                     .map(bill => ({
                         ...bill,
                         dueDate: getBillDueDateForMonth(bill, selectedMonth),
@@ -5226,7 +5370,7 @@
                                 {/* Date + Description */}
                                 <div className="grid grid-cols-2 gap-3 mb-3">
                                     <div>
-                                        <p className="text-[9px] text-gray-500 font-mono mb-1">DATA</p>
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">DATA (VINCULADA AO MÊS)</p>
                                         <input type="date" value={form.date}
                                             onChange={e=>setForm(p=>({...p,date:e.target.value}))}
                                             className="w-full p-3 rounded-xl text-sm" />
@@ -5418,25 +5562,109 @@
                                 </div>
                             )}
 
-                            {/* Add bill button */}
-                            {!showBillForm && (
-                                <button onClick={()=>setShowBillForm(true)}
-                                    className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2">
-                                    <BankUiIcon name="plus" size={16} color="#d4af37" />
-                                    NOVA CONTA FIXA
-                                </button>
+                            <div className="os-card p-4 rounded-xl">
+                                <div className="flex items-center justify-between gap-3 mb-3">
+                                    <div>
+                                        <p className="font-usarmy text-[#d4af37] text-xs">GESTÃO MENSAL</p>
+                                        <p className="text-[9px] text-gray-500 font-mono">As contas exibidas pertencem ao mês e ano selecionados</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-usarmy text-white text-sm">{fixedBills.filter(b=>b.active!==false).length}</p>
+                                        <p className="text-[8px] text-gray-600">contas no período</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">ANO</p>
+                                        <select value={selectedBillYear}
+                                            onChange={e=>setSelectedMonth(`${e.target.value}-${selectedBillMonth}`)}
+                                            className="w-full p-3 rounded-xl text-sm">
+                                            {fixedBillYears.map(year => <option key={year} value={year}>{year}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">MÊS</p>
+                                        <select value={selectedBillMonth}
+                                            onChange={e=>setSelectedMonth(`${selectedBillYear}-${e.target.value}`)}
+                                            className="w-full p-3 rounded-xl text-sm">
+                                            {[
+                                                ['01','JAN'],['02','FEV'],['03','MAR'],['04','ABR'],['05','MAI'],['06','JUN'],
+                                                ['07','JUL'],['08','AGO'],['09','SET'],['10','OUT'],['11','NOV'],['12','DEZ']
+                                            ].map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {!showBillForm ? (
+                                        <button onClick={()=>{ setShowBillForm(true); setEditingBillId(null); setBillForm({name:'',value:'',date:buildBillDateFromMonth(selectedMonth, 1),area:'oficina',active:true}); }}
+                                            className="gold-gradient p-4 rounded-xl font-usarmy text-[11px] flex items-center justify-center gap-2">
+                                            <BankUiIcon name="plus" size={16} color="#050505" />
+                                            ADICIONAR CONTA
+                                        </button>
+                                    ) : (
+                                        <button onClick={()=>{ setEditingBillId(null); setBillForm({name:'',value:'',date:buildBillDateFromMonth(selectedMonth, 1),area:'oficina',active:true}); setShowBillForm(false); }}
+                                            className="p-4 rounded-xl border border-white/10 text-gray-400 font-usarmy text-[11px]">
+                                            FECHAR FORMULÁRIO
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={()=>{
+                                            const previousYM = getPreviousMonthYM(selectedMonth);
+                                            const sourceBills = getFixedBillsForMonthV2(previousYM);
+                                            if (sourceBills.length === 0) { showToast('Nenhuma conta no mês anterior','warning'); return; }
+                                            if (fixedBills.length > 0) { showToast('O mês atual já possui contas','warning'); return; }
+                                            setFixedBills(sourceBills.map((bill, index) => normalizeFixedBill({
+                                                ...bill,
+                                                id: `${Date.now()}_${index}`,
+                                                date: buildBillDateFromMonth(selectedMonth, parseInt(String(bill.date || '').slice(8,10), 10) || bill.day || 1),
+                                                day: parseInt(String(bill.date || '').slice(8,10), 10) || bill.day || 1,
+                                                status: 'pendente'
+                                            })).filter(Boolean));
+                                            showToast('✅ Contas replicadas do mês anterior','success');
+                                        }}
+                                        className="p-4 rounded-xl border border-[#d4af37]/30 bg-[#d4af37]/5 text-[#d4af37] font-usarmy text-[11px] flex items-center justify-center gap-2">
+                                        <BankUiIcon name="copy" size={14} color="#d4af37" />
+                                        REPLICAR MÊS ANTERIOR
+                                    </button>
+                                </div>
+                            </div>
+
+                            {fixedBillChartData.some(item => item.total > 0) && (
+                                <div className="os-card p-4 rounded-xl">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p className="font-usarmy text-[#d4af37] text-xs">MAPA ANUAL MINIMALISTA</p>
+                                            <p className="text-[9px] text-gray-500 font-mono">Leitura rápida das contas fixas de {selectedBillYear}</p>
+                                        </div>
+                                        <p className="font-usarmy text-white text-xs">PICO {money(fixedBillChartMax)}</p>
+                                    </div>
+                                    <div className="fixed-chart-grid">
+                                        {fixedBillChartData.map(item => {
+                                            const active = item.month === selectedBillMonth;
+                                            const heightPct = Math.max((Number(item.total || 0) / fixedBillChartMax) * 100, item.total > 0 ? 10 : 0);
+                                            return (
+                                                <div key={item.month} className="fixed-chart-bar-wrap">
+                                                    <div className="fixed-chart-bar-track" style={{opacity: active ? 1 : 0.65}}>
+                                                        <div className="fixed-chart-bar-fill" style={{height: `${heightPct}%`, opacity: active ? 1 : 0.55}}></div>
+                                                    </div>
+                                                    <span className="fixed-chart-label" style={{color: active ? '#d4af37' : '#6b7280'}}>{item.month}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             )}
 
                             {/* Bill form */}
                             {showBillForm && (
                                 <div className="os-card p-4 rounded-xl">
-                                    <p className="font-usarmy text-[#d4af37] text-xs mb-3">{editingBillId ? 'EDITAR CONTA FIXA' : 'NOVA CONTA FIXA'}</p>
+                                    <p className="font-usarmy text-[#d4af37] text-xs mb-3">{editingBillId ? `EDITAR CONTA FIXA • ${selectedBillMonth}/${selectedBillYear}` : `NOVA CONTA • ${selectedBillMonth}/${selectedBillYear}`}</p>
                                     <input type="text" value={billForm.name} placeholder="Nome da conta (ex: Aluguel, Internet...)"
                                         onChange={e=>setBillForm(p=>({...p,name:e.target.value}))}
                                         className="w-full p-3 rounded-xl mb-3 text-sm" />
                                     <div className="grid grid-cols-2 gap-3 mb-3">
                                         <div>
-                                            <p className="text-[9px] text-gray-500 font-mono mb-1">DATA</p>
+                                            <p className="text-[9px] text-gray-500 font-mono mb-1">DATA (VINCULADA AO MÊS)</p>
                                             <input type="date" value={billForm.date}
                                                 onChange={e=>setBillForm(p=>({...p,date:e.target.value}))}
                                                 className="w-full p-3 rounded-xl text-sm" />
@@ -5468,7 +5696,7 @@
                             {fixedBills.length > 0 && (
                                 <div className="os-card p-3 rounded-xl">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO/MÊS</span>
+                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO DO PERÍODO</span>
                                         <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBills.filter(b=>b.active!==false).reduce((s,b)=>s+Number(b.value||0),0))}</span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mt-2">
@@ -5489,7 +5717,7 @@
                             {/* Bill list */}
                             <div className="space-y-2">
                                 {fixedBills.length === 0 && (
-                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA</div>
+                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA NESTE MÊS</div>
                                 )}
                                 {[...fixedBills].sort((a,b)=>parseInt(a.day)-parseInt(b.day)).map(b => {
                                     const meta = AREA_META[b.area||'oficina'];
