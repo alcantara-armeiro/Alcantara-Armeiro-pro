@@ -427,43 +427,6 @@
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
 
 
-        .fixed-chart-grid {
-            display: flex;
-            align-items: end;
-            gap: 6px;
-            height: 74px;
-        }
-        .fixed-chart-bar-wrap {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 6px;
-        }
-        .fixed-chart-bar-track {
-            width: 100%;
-            height: 54px;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.04);
-            display: flex;
-            align-items: end;
-            overflow: hidden;
-        }
-        .fixed-chart-bar-fill {
-            width: 100%;
-            border-radius: 999px;
-            background: linear-gradient(180deg, rgba(212,175,55,0.95) 0%, rgba(184,134,11,0.80) 100%);
-            box-shadow: 0 0 12px rgba(212,175,55,0.14);
-            transition: height 0.35s ease;
-        }
-        .fixed-chart-label {
-            font-size: 8px;
-            color: #6b7280;
-            font-family: 'JetBrains Mono', monospace;
-            letter-spacing: 0.04em;
-        }
-
         .dashboard-premium-btn {
             position: relative;
             overflow: hidden;
@@ -645,10 +608,10 @@
 
             const cloneValue = (v) => v === undefined ? null : String(v);
             const keysToMirror = [
-                'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2',
+                'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
                 'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
                 'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
-                'alcantara_auth','alcantara_equipment_history'
+                'alcantara_auth','alcantara_equipment_history','alcantara_tech_maintenances'
             ];
 
             function openDb() {
@@ -797,10 +760,10 @@
                 },
                 async compactData() {
                     const keys = [
-                        'alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2','alcantara_bank_cards','alcantara_bank_card_entries',
+                        'alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_cards','alcantara_bank_card_entries',
                         'alcantara_bank_budgets','alcantara_os','alcantara_catalog','alcantara_products',
                         'gf_fornecedores','gf_pecas','alcantara_assistencias_registros','alcantara_customer_notes',
-                        'alcantara_equipment_history'
+                        'alcantara_equipment_history','alcantara_tech_maintenances'
                     ];
                     let cleaned = 0;
                     for (const key of keys) {
@@ -864,10 +827,10 @@
         };
 
         const APP_BACKUP_KEYS = [
-            'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed','alcantara_bank_fixed_v2',
+            'alcantara_os','alcantara_catalog','alcantara_products','alcantara_bank_transactions','alcantara_bank_fixed',
             'alcantara_bank_budgets','alcantara_bank_cards','alcantara_bank_card_entries','gf_fornecedores','gf_pecas',
             'gf_margem','alcantara_assistencias_registros','alcantara_customer_notes','alcantara_last_bench_os',
-            'alcantara_auth','alcantara_equipment_history'
+            'alcantara_auth','alcantara_equipment_history','alcantara_tech_maintenances'
         ];
 
         const buildFullAppBackup = async () => {
@@ -1037,95 +1000,6 @@
         const normalizeFixedBills = (value) => asArray(value)
             .map((bill, index) => normalizeFixedBill(bill, index))
             .filter(Boolean);
-
-
-        const FIXED_BILLS_STORAGE_KEY_V2 = 'alcantara_bank_fixed_v2';
-        const getFixedBillsStoreV2 = () => {
-            const parsed = safeJsonParse(SafeStorage.getItem(FIXED_BILLS_STORAGE_KEY_V2), {});
-            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-        };
-        const saveFixedBillsStoreV2 = (data) => {
-            SafeStorage.setItem(FIXED_BILLS_STORAGE_KEY_V2, JSON.stringify(data || {}));
-        };
-        const ensureFixedBillsMonthV2 = (data, ym) => {
-            const safe = data && typeof data === 'object' && !Array.isArray(data) ? { ...data } : {};
-            const [year, month] = String(ym || '').split('-');
-            if (!/^\d{4}$/.test(String(year || '')) || !/^\d{2}$/.test(String(month || ''))) return safe;
-            if (!safe[year] || typeof safe[year] !== 'object' || Array.isArray(safe[year])) safe[year] = {};
-            if (!Array.isArray(safe[year][month])) safe[year][month] = [];
-            return safe;
-        };
-        const getFixedBillsForMonthV2 = (ym) => {
-            const [year, month] = String(ym || '').split('-');
-            if (!/^\d{4}$/.test(String(year || '')) || !/^\d{2}$/.test(String(month || ''))) return [];
-            const store = ensureFixedBillsMonthV2(getFixedBillsStoreV2(), ym);
-            return normalizeFixedBills(store?.[year]?.[month] || []).map((bill) => ({
-                ...bill,
-                status: String(bill?.status || 'pendente').toLowerCase() === 'paga' ? 'paga' : 'pendente'
-            }));
-        };
-        const setFixedBillsForMonthV2 = (ym, bills) => {
-            const normalizedBills = normalizeFixedBills(bills).map((bill) => ({
-                ...bill,
-                status: String(bill?.status || 'pendente').toLowerCase() === 'paga' ? 'paga' : 'pendente'
-            }));
-            const [year, month] = String(ym || '').split('-');
-            const nextStore = ensureFixedBillsMonthV2(getFixedBillsStoreV2(), ym);
-            nextStore[year][month] = normalizedBills;
-            saveFixedBillsStoreV2(nextStore);
-            SafeStorage.setItem('alcantara_bank_fixed', JSON.stringify(normalizedBills));
-            return normalizedBills;
-        };
-        const listFixedBillsYearsV2 = (currentYear) => {
-            const store = getFixedBillsStoreV2();
-            const years = new Set(Object.keys(store || {}).filter(y => /^\d{4}$/.test(String(y))));
-            if (currentYear) years.add(String(currentYear));
-            return [...years].sort((a,b) => b.localeCompare(a));
-        };
-        const migrateFixedBillsToV2 = (currentYM) => {
-            let store = getFixedBillsStoreV2();
-            store = ensureFixedBillsMonthV2(store, currentYM);
-            const [year, month] = String(currentYM || '').split('-');
-            if ((store?.[year]?.[month] || []).length === 0) {
-                const legacy = normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), []));
-                if (legacy.length > 0) {
-                    store[year][month] = legacy.map((bill) => ({
-                        ...bill,
-                        status: (Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(currentYM)) ? 'paga' : 'pendente'
-                    }));
-                }
-            }
-            const currentYear = new Date().getFullYear();
-            for (let y = currentYear - 1; y <= currentYear + 1; y += 1) {
-                store = ensureFixedBillsMonthV2(store, `${y}-01`);
-            }
-            saveFixedBillsStoreV2(store);
-            return store;
-        };
-        const buildBillDateFromMonth = (ym, day) => {
-            const [year, month] = String(ym || '').split('-').map(Number);
-            if (!year || !month) return isoToday();
-            const maxDay = new Date(year, month, 0).getDate();
-            const safeDay = Math.min(Math.max(parseInt(day, 10) || 1, 1), maxDay);
-            return `${year}-${String(month).padStart(2,'0')}-${String(safeDay).padStart(2,'0')}`;
-        };
-        const getPreviousMonthYM = (ym) => {
-            const [year, month] = String(ym || '').split('-').map(Number);
-            if (!year || !month) return '';
-            const prev = new Date(year, month - 2, 1, 12, 0, 0, 0);
-            return `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
-        };
-        const getFixedBillMonthlyChartData = (year) => {
-            const store = getFixedBillsStoreV2();
-            return Array.from({ length: 12 }, (_, index) => {
-                const month = String(index + 1).padStart(2, '0');
-                const bills = normalizeFixedBills(store?.[year]?.[month] || []);
-                return {
-                    month,
-                    total: bills.filter(b => b.active !== false).reduce((sum, bill) => sum + Number(bill.value || 0), 0)
-                };
-            });
-        };
 
         // ========== DB CONTEXT (estado global reativo) ==========
         const DbContext = React.createContext(null);
@@ -2667,8 +2541,7 @@
             // ── State ──────────────────────────────────────────────────────────
             const [tab,            setTab]            = useState(() => localStorage.getItem('alcantara_bank_quick_tab') || 'dashboard');
             const [transactions,   setTransactions]   = useState(() => normalizeBankTransactions(safeJsonParse(SafeStorage.getItem('alcantara_bank_transactions'), [])));
-            const [fixedBills,     setFixedBills]     = useState(() => { migrateFixedBillsToV2(currentYM); return getFixedBillsForMonthV2(currentYM); });
-            const [fixedBillsLoadedMonth, setFixedBillsLoadedMonth] = useState(currentYM);
+            const [fixedBills,     setFixedBills]     = useState(() => normalizeFixedBills(safeJsonParse(SafeStorage.getItem('alcantara_bank_fixed'), [])));
             const [budgets,        setBudgets]        = useState(() => normalizeBudgets(safeJsonParse(SafeStorage.getItem('alcantara_bank_budgets'), { personal:2500, workshop:1200 })));
             const [withdrawalLimit, setWithdrawalLimit] = useState(() => {
                 const saved = Number(safeJsonParse(SafeStorage.getItem('alcantara_bank_withdrawal_limit'), 800));
@@ -2690,11 +2563,6 @@
             };
             const [form, setForm] = useState(emptyForm);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
-            const selectedBillYear = selectedMonth.slice(0,4);
-            const selectedBillMonth = selectedMonth.slice(5,7);
-            const fixedBillYears = useMemo(() => listFixedBillsYearsV2(new Date().getFullYear()), [selectedMonth, fixedBills.length]);
-            const fixedBillChartData = useMemo(() => getFixedBillMonthlyChartData(selectedBillYear), [selectedBillYear, fixedBills.length]);
-            const fixedBillChartMax = useMemo(() => Math.max(...fixedBillChartData.map(item => Number(item.total || 0)), 1), [fixedBillChartData]);
             const [cards,          setCards]          = useState(() => normalizeCards(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
             const [cardEntries,    setCardEntries]    = useState(() => normalizeCardEntries(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
             const [selectedCardId, setSelectedCardId] = useState(null);
@@ -2979,6 +2847,8 @@
                         return <svg {...common}><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z"></path></svg>;
                     case 'shield-alert':
                         return <svg {...common}><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z"></path><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>;
+                    case 'target':
+                        return <svg {...common}><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle></svg>;
                     case 'traffic-cone':
                         return <svg {...common}><path d="M10 4h4l3 12H7l3-12z"></path><path d="M8 10h8"></path><path d="M6 20h12"></path></svg>;
                     case 'arrow-down-left':
@@ -2998,26 +2868,12 @@
 
             // ── Persist ────────────────────────────────────────────────────────
             useEffect(() => { SafeStorage.setItem('alcantara_bank_transactions', JSON.stringify(normalizeBankTransactions(transactions))); }, [transactions]);
-            useEffect(() => { if (fixedBillsLoadedMonth !== selectedMonth) return; setFixedBillsForMonthV2(selectedMonth, fixedBills); }, [fixedBills, selectedMonth, fixedBillsLoadedMonth]);
+            useEffect(() => { SafeStorage.setItem('alcantara_bank_fixed',        JSON.stringify(normalizeFixedBills(fixedBills)));   }, [fixedBills]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_budgets',      JSON.stringify(normalizeBudgets(budgets)));      }, [budgets]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_withdrawal_limit', JSON.stringify(Number(withdrawalLimit) > 0 ? Number(withdrawalLimit) : 800)); }, [withdrawalLimit]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_cards',        JSON.stringify(normalizeCards(cards)));           }, [cards]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_card_entries',  JSON.stringify(normalizeCardEntries(cardEntries)));            }, [cardEntries]);
             useEffect(() => { SafeStorage.setItem('alcantara_bank_debt_plan',     JSON.stringify(normalizeDebtPlanState(debtPlanData))); }, [debtPlanData]);
-
-            useEffect(() => {
-                migrateFixedBillsToV2(currentYM);
-            }, []);
-
-            useEffect(() => {
-                migrateFixedBillsToV2(selectedMonth);
-                setFixedBills(getFixedBillsForMonthV2(selectedMonth));
-                setFixedBillsLoadedMonth(selectedMonth);
-                setBillForm(prev => ({
-                    ...prev,
-                    date: buildBillDateFromMonth(selectedMonth, isIsoDate(prev?.date) ? prev.date.slice(8,10) : 1)
-                }));
-            }, [selectedMonth]);
 
             // ── Icon refresh ───────────────────────────────────────────────────
             // No Bank não podemos reexecutar lucide.createIcons(), porque o Lucide
@@ -3262,22 +3118,20 @@
             }, [budgets, monthlySummary]);
 
             // ── Fixed bills due alert ──────────────────────────────────────────
-            const isBillPaidForMonth = (bill, ym = currentYM) => String(bill?.status || 'pendente').toLowerCase() === 'paga';
+            const isBillPaidForMonth = (bill, ym = currentYM) => Array.isArray(bill?.paidMonths) && bill.paidMonths.includes(ym);
             const getFixedBillSyncId = (billId, ym = currentYM) => `fixed_bill_${billId}_${ym}`;
             const getBillStartMonth = (bill) => {
                 if (isIsoDate(bill?.date)) return bill.date.slice(0,7);
-                return selectedMonth;
+                return currentYM;
             };
             const compareYM = (a, b) => String(a || '').localeCompare(String(b || ''));
             const getBillDueDateForMonth = (bill, ym = currentYM) => {
-                if (!bill || !ym) return null;
-                if (isIsoDate(bill?.date)) {
-                    const [year, month] = ym.split('-').map(Number);
-                    const dueDay = parseInt(String(bill.date).slice(8,10), 10) || parseInt(bill.day, 10) || 1;
-                    const maxDay = new Date(year, month, 0).getDate();
-                    return new Date(year, month - 1, Math.min(dueDay, maxDay), 12, 0, 0, 0);
-                }
-                return null;
+                if (!bill || !ym || compareYM(ym, getBillStartMonth(bill)) < 0) return null;
+                const [year, month] = String(ym).split('-').map(Number);
+                if (!year || !month) return null;
+                const maxDay = new Date(year, month, 0).getDate();
+                const dueDay = Math.min(Math.max(parseInt(bill.day, 10) || 1, 1), maxDay);
+                return new Date(year, month - 1, dueDay, 12, 0, 0, 0);
             };
             const getBillMonthStatus = (bill, ym = currentYM) => {
                 const dueDate = getBillDueDateForMonth(bill, ym);
@@ -3727,7 +3581,7 @@
                     if (!billId || !billMonth) { showToast('Conta fixa vinculada inválida.','warning'); return; }
                     setTransactions(prev => prev.filter(t => t.id !== id));
                     setFixedBills(prev => prev.map(b => String(b.id) === String(billId)
-                        ? { ...b, status: 'pendente' }
+                        ? { ...b, paidMonths: (b.paidMonths || []).filter(m => m !== billMonth) }
                         : b
                     ));
                     setConfirmDelete(null);
@@ -3753,11 +3607,11 @@
                     id: editingBillId || Date.now().toString(),
                     name: billForm.name.trim(),
                     value,
-                    date: buildBillDateFromMonth(selectedMonth, day),
+                    date: billDate,
                     day,
                     area: billForm.area || 'oficina',
                     active: existingBill ? existingBill.active !== false : true,
-                    status: existingBill?.status === 'paga' ? 'paga' : 'pendente'
+                    paidMonths: existingBill?.paidMonths || []
                 });
                 if (!payload) {
                     showToast('Não foi possível salvar a conta fixa','error'); return;
@@ -3776,7 +3630,7 @@
                 setBillForm({
                     name:b.name,
                     value:String(b.value),
-date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min(Math.max(parseInt(b.day, 10) || 1, 1), 31)),
+                    date:isIsoDate(b.date) ? b.date : `${currentYM}-${String(Math.min(Math.max(parseInt(b.day, 10) || 1, 1), 31)).padStart(2,'0')}`,
                     area:b.area||'oficina',
                     active:b.active!==false
                 });
@@ -3786,12 +3640,16 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
 
             const toggleBillPaid = (bill) => {
                 const ym = selectedMonth;
+                if (compareYM(ym, getBillStartMonth(bill)) < 0) {
+                    showToast('Essa conta ainda não iniciou no mês selecionado.','info');
+                    return;
+                }
                 const syncId = getFixedBillSyncId(bill.id, ym);
                 const alreadyPaid = isBillPaidForMonth(bill, ym);
 
                 if (alreadyPaid) {
                     setFixedBills(prev => prev.map(item => item.id === bill.id
-                        ? { ...item, status: 'pendente' }
+                        ? { ...item, paidMonths: asArray(item.paidMonths).filter(m => m !== ym) }
                         : item
                     ));
                     setTransactions(prev => prev.filter(t => !(t.syncSource === 'fixed_bill' && String(t.syncId) === syncId)));
@@ -3815,7 +3673,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                 };
 
                 setFixedBills(prev => prev.map(item => item.id === bill.id
-                    ? { ...item, status: 'paga' }
+                    ? { ...item, paidMonths: [...new Set([...asArray(item.paidMonths), ym])] }
                     : item
                 ));
                 setTransactions(prev => {
@@ -4181,7 +4039,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                 const workshopIncome = workshopTransactions.filter(item => item.type === 'entrada');
                 const workshopExpense = workshopTransactions.filter(item => item.type !== 'entrada');
                 const fixedBillsForMonth = fixedBills
-                    .filter(bill => bill?.active !== false)
+                    .filter(bill => (bill?.active !== false) && compareYM(selectedMonth, getBillStartMonth(bill)) >= 0)
                     .map(bill => ({
                         ...bill,
                         dueDate: getBillDueDateForMonth(bill, selectedMonth),
@@ -4780,7 +4638,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                     </div>
 
                     {/* ── Tab Nav ── */}
-                    <div className="grid grid-cols-3 gap-1.5 mb-4 sm:grid-cols-7">
+                    <div className="grid grid-cols-4 gap-1.5 mb-4 sm:grid-cols-8">
                         {[
                             ['dashboard','PAINEL','layout-dashboard'],
                             ['lancamentos','LANÇAR','plus-circle'],
@@ -4788,7 +4646,8 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                             ['fixas','FIXAS','calendar-clock'],
                             ['cartoes','CARTÕES','credit-card'],
                             ['fechamento','CAIXA','shield'],
-                            ['relatorios','RELATÓRIO','bar-chart-2']
+                            ['relatorios','RELATÓRIO','bar-chart-2'],
+                            ['estrategia','ESTRATÉGIA','target']
                         ].map(([key,label,icon])=>(
                             <button key={key} onClick={()=>setTab(key)}
                                 className={`p-2.5 rounded-xl text-[9px] font-usarmy relative ${tab===key ? 'gold-gradient' : 'bg-white/5 text-gray-400 border border-white/10'}`}>
@@ -4841,7 +4700,26 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
 
+
+                    {/* ════════════════ TAB: ESTRATÉGIA ════════════════ */}
+                    {tab === 'estrategia' && (
+                        <div className="space-y-4 animate-fadeIn">
+                            <MonthNav />
+
+                            <div className="os-card p-4 rounded-xl" style={{border:'1px solid rgba(212,175,55,0.22)', background:'linear-gradient(145deg, #131006 0%, #0a0a0a 100%)'}}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="font-usarmy text-[#d4af37] text-xs">CENTRAL ESTRATÉGICA</p>
+                                        <p className="text-[9px] text-gray-500 mt-1">Análises, orçamento, plano de dívidas e leitura tática do mês.</p>
+                                    </div>
+                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#d4af37]/10 border border-[#d4af37]/20">
+                                        <BankUiIcon name="target" size={20} color="#d4af37" />
+                                    </div>
+                                </div>
+                            </div>
 
                             <div className="rounded-xl p-3" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
                                 <div className="flex items-center justify-between gap-3">
@@ -5370,7 +5248,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                                 {/* Date + Description */}
                                 <div className="grid grid-cols-2 gap-3 mb-3">
                                     <div>
-                                        <p className="text-[9px] text-gray-500 font-mono mb-1">DATA (VINCULADA AO MÊS)</p>
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">DATA</p>
                                         <input type="date" value={form.date}
                                             onChange={e=>setForm(p=>({...p,date:e.target.value}))}
                                             className="w-full p-3 rounded-xl text-sm" />
@@ -5562,109 +5440,25 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                                 </div>
                             )}
 
-                            <div className="os-card p-4 rounded-xl">
-                                <div className="flex items-center justify-between gap-3 mb-3">
-                                    <div>
-                                        <p className="font-usarmy text-[#d4af37] text-xs">GESTÃO MENSAL</p>
-                                        <p className="text-[9px] text-gray-500 font-mono">As contas exibidas pertencem ao mês e ano selecionados</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-usarmy text-white text-sm">{fixedBills.filter(b=>b.active!==false).length}</p>
-                                        <p className="text-[8px] text-gray-600">contas no período</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                    <div>
-                                        <p className="text-[9px] text-gray-500 font-mono mb-1">ANO</p>
-                                        <select value={selectedBillYear}
-                                            onChange={e=>setSelectedMonth(`${e.target.value}-${selectedBillMonth}`)}
-                                            className="w-full p-3 rounded-xl text-sm">
-                                            {fixedBillYears.map(year => <option key={year} value={year}>{year}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <p className="text-[9px] text-gray-500 font-mono mb-1">MÊS</p>
-                                        <select value={selectedBillMonth}
-                                            onChange={e=>setSelectedMonth(`${selectedBillYear}-${e.target.value}`)}
-                                            className="w-full p-3 rounded-xl text-sm">
-                                            {[
-                                                ['01','JAN'],['02','FEV'],['03','MAR'],['04','ABR'],['05','MAI'],['06','JUN'],
-                                                ['07','JUL'],['08','AGO'],['09','SET'],['10','OUT'],['11','NOV'],['12','DEZ']
-                                            ].map(([value,label]) => <option key={value} value={value}>{label}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {!showBillForm ? (
-                                        <button onClick={()=>{ setShowBillForm(true); setEditingBillId(null); setBillForm({name:'',value:'',date:buildBillDateFromMonth(selectedMonth, 1),area:'oficina',active:true}); }}
-                                            className="gold-gradient p-4 rounded-xl font-usarmy text-[11px] flex items-center justify-center gap-2">
-                                            <BankUiIcon name="plus" size={16} color="#050505" />
-                                            ADICIONAR CONTA
-                                        </button>
-                                    ) : (
-                                        <button onClick={()=>{ setEditingBillId(null); setBillForm({name:'',value:'',date:buildBillDateFromMonth(selectedMonth, 1),area:'oficina',active:true}); setShowBillForm(false); }}
-                                            className="p-4 rounded-xl border border-white/10 text-gray-400 font-usarmy text-[11px]">
-                                            FECHAR FORMULÁRIO
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={()=>{
-                                            const previousYM = getPreviousMonthYM(selectedMonth);
-                                            const sourceBills = getFixedBillsForMonthV2(previousYM);
-                                            if (sourceBills.length === 0) { showToast('Nenhuma conta no mês anterior','warning'); return; }
-                                            if (fixedBills.length > 0) { showToast('O mês atual já possui contas','warning'); return; }
-                                            setFixedBills(sourceBills.map((bill, index) => normalizeFixedBill({
-                                                ...bill,
-                                                id: `${Date.now()}_${index}`,
-                                                date: buildBillDateFromMonth(selectedMonth, parseInt(String(bill.date || '').slice(8,10), 10) || bill.day || 1),
-                                                day: parseInt(String(bill.date || '').slice(8,10), 10) || bill.day || 1,
-                                                status: 'pendente'
-                                            })).filter(Boolean));
-                                            showToast('✅ Contas replicadas do mês anterior','success');
-                                        }}
-                                        className="p-4 rounded-xl border border-[#d4af37]/30 bg-[#d4af37]/5 text-[#d4af37] font-usarmy text-[11px] flex items-center justify-center gap-2">
-                                        <BankUiIcon name="copy" size={14} color="#d4af37" />
-                                        REPLICAR MÊS ANTERIOR
-                                    </button>
-                                </div>
-                            </div>
-
-                            {fixedBillChartData.some(item => item.total > 0) && (
-                                <div className="os-card p-4 rounded-xl">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div>
-                                            <p className="font-usarmy text-[#d4af37] text-xs">MAPA ANUAL MINIMALISTA</p>
-                                            <p className="text-[9px] text-gray-500 font-mono">Leitura rápida das contas fixas de {selectedBillYear}</p>
-                                        </div>
-                                        <p className="font-usarmy text-white text-xs">PICO {money(fixedBillChartMax)}</p>
-                                    </div>
-                                    <div className="fixed-chart-grid">
-                                        {fixedBillChartData.map(item => {
-                                            const active = item.month === selectedBillMonth;
-                                            const heightPct = Math.max((Number(item.total || 0) / fixedBillChartMax) * 100, item.total > 0 ? 10 : 0);
-                                            return (
-                                                <div key={item.month} className="fixed-chart-bar-wrap">
-                                                    <div className="fixed-chart-bar-track" style={{opacity: active ? 1 : 0.65}}>
-                                                        <div className="fixed-chart-bar-fill" style={{height: `${heightPct}%`, opacity: active ? 1 : 0.55}}></div>
-                                                    </div>
-                                                    <span className="fixed-chart-label" style={{color: active ? '#d4af37' : '#6b7280'}}>{item.month}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                            {/* Add bill button */}
+                            {!showBillForm && (
+                                <button onClick={()=>setShowBillForm(true)}
+                                    className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2">
+                                    <BankUiIcon name="plus" size={16} color="#d4af37" />
+                                    NOVA CONTA FIXA
+                                </button>
                             )}
 
                             {/* Bill form */}
                             {showBillForm && (
                                 <div className="os-card p-4 rounded-xl">
-                                    <p className="font-usarmy text-[#d4af37] text-xs mb-3">{editingBillId ? `EDITAR CONTA FIXA • ${selectedBillMonth}/${selectedBillYear}` : `NOVA CONTA • ${selectedBillMonth}/${selectedBillYear}`}</p>
+                                    <p className="font-usarmy text-[#d4af37] text-xs mb-3">{editingBillId ? 'EDITAR CONTA FIXA' : 'NOVA CONTA FIXA'}</p>
                                     <input type="text" value={billForm.name} placeholder="Nome da conta (ex: Aluguel, Internet...)"
                                         onChange={e=>setBillForm(p=>({...p,name:e.target.value}))}
                                         className="w-full p-3 rounded-xl mb-3 text-sm" />
                                     <div className="grid grid-cols-2 gap-3 mb-3">
                                         <div>
-                                            <p className="text-[9px] text-gray-500 font-mono mb-1">DATA (VINCULADA AO MÊS)</p>
+                                            <p className="text-[9px] text-gray-500 font-mono mb-1">DATA</p>
                                             <input type="date" value={billForm.date}
                                                 onChange={e=>setBillForm(p=>({...p,date:e.target.value}))}
                                                 className="w-full p-3 rounded-xl text-sm" />
@@ -5696,7 +5490,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                             {fixedBills.length > 0 && (
                                 <div className="os-card p-3 rounded-xl">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO DO PERÍODO</span>
+                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO/MÊS</span>
                                         <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBills.filter(b=>b.active!==false).reduce((s,b)=>s+Number(b.value||0),0))}</span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mt-2">
@@ -5717,7 +5511,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                             {/* Bill list */}
                             <div className="space-y-2">
                                 {fixedBills.length === 0 && (
-                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA NESTE MÊS</div>
+                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA</div>
                                 )}
                                 {[...fixedBills].sort((a,b)=>parseInt(a.day)-parseInt(b.day)).map(b => {
                                     const meta = AREA_META[b.area||'oficina'];
@@ -6996,6 +6790,532 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
 
 
 // ========== COMPONENTE PRINCIPAL ==========
+
+
+        // ========== ALCANTARA TECH — DASHBOARD NATIVO ALCANTARA ==========
+        const AlcantaraTechIntegrated = ({ onBack }) => {
+            const [techView, setTechView] = useState('home');
+            const [energyForm, setEnergyForm] = useState({ mode: 'fps', weight: '0.20', value: '350' });
+            const [rofForm, setRofForm] = useState({ rpm: '30000', ratio: '18', efficiency: '78' });
+            const [volumeForm, setVolumeForm] = useState({ cylDiameter: '23.8', cylLength: '72', barrelDiameter: '6.03', barrelLength: '300' });
+            const [springForm, setSpringForm] = useState({ currentFps: '330', targetFps: '380' });
+            const TECH_MAINTENANCE_KEY = 'alcantara_tech_maintenances';
+            const emptyMaintenanceForm = { brand: '', model: '', serial: '', notes: '' };
+            const [maintenanceForm, setMaintenanceForm] = useState(emptyMaintenanceForm);
+            const [maintenances, setMaintenances] = useState(() => asArray(safeJsonParse(SafeStorage.getItem(TECH_MAINTENANCE_KEY), [])));
+            const [selectedMaintenanceId, setSelectedMaintenanceId] = useState(null);
+            const [editingMaintenanceId, setEditingMaintenanceId] = useState(null);
+            const [maintenanceSearch, setMaintenanceSearch] = useState('');
+
+            const persistMaintenances = useCallback((nextList) => {
+                setMaintenances(nextList);
+                SafeStorage.setItem(TECH_MAINTENANCE_KEY, JSON.stringify(nextList));
+            }, []);
+
+            const setMaintenanceField = (field, value) => setMaintenanceForm(prev => ({ ...prev, [field]: value }));
+            const clearMaintenanceForm = () => {
+                setMaintenanceForm(emptyMaintenanceForm);
+                setEditingMaintenanceId(null);
+            };
+            const saveMaintenanceRecord = () => {
+                const model = String(maintenanceForm.model || '').trim();
+                if (!model) {
+                    showToast('INFORME O MODELO DO EQUIPAMENTO', 'warning');
+                    return;
+                }
+                const record = {
+                    id: editingMaintenanceId || 'tech_' + Date.now(),
+                    brand: String(maintenanceForm.brand || '').trim(),
+                    model,
+                    serial: String(maintenanceForm.serial || '').trim(),
+                    notes: String(maintenanceForm.notes || '').trim(),
+                    updatedAt: new Date().toISOString(),
+                    createdAt: editingMaintenanceId
+                        ? (maintenances.find(item => item.id === editingMaintenanceId)?.createdAt || new Date().toISOString())
+                        : new Date().toISOString()
+                };
+                const nextList = editingMaintenanceId
+                    ? maintenances.map(item => item.id === editingMaintenanceId ? record : item)
+                    : [record, ...maintenances];
+                persistMaintenances(nextList);
+                clearMaintenanceForm();
+                showToast('EQUIPAMENTO SALVO', 'success');
+            };
+            const editMaintenanceRecord = (record) => {
+                setMaintenanceForm({
+                    brand: record.brand || '',
+                    model: record.model || '',
+                    serial: record.serial || '',
+                    notes: record.notes || ''
+                });
+                setEditingMaintenanceId(record.id);
+                setSelectedMaintenanceId(null);
+                setTechView('links');
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
+            };
+            const deleteMaintenanceRecord = (id) => {
+                const nextList = maintenances.filter(item => item.id !== id);
+                persistMaintenances(nextList);
+                setSelectedMaintenanceId(null);
+                if (editingMaintenanceId === id) clearMaintenanceForm();
+                showToast('EQUIPAMENTO EXCLUÍDO', 'success');
+            };
+
+            const moneyTone = {
+                gold: {
+                    bg: 'linear-gradient(135deg, #8b6a14 0%, #d4af37 50%, #8b6a14 100%)',
+                    shine: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)',
+                    border: 'rgba(245,211,106,0.45)',
+                    icon: 'text-black',
+                    title: 'text-black'
+                },
+                green: {
+                    bg: 'linear-gradient(135deg, #314c1b 0%, #5d7a37 50%, #314c1b 100%)',
+                    shine: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)',
+                    border: 'rgba(143,184,90,0.45)',
+                    icon: 'text-[#0b0b0b]',
+                    title: 'text-white'
+                },
+                blue: {
+                    bg: 'linear-gradient(135deg, #0d1a2d 0%, #1d4ed8 50%, #0d1a2d 100%)',
+                    shine: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(191,219,254,0.22) 50%, rgba(255,255,255,0) 100%)',
+                    border: 'rgba(59,130,246,0.45)',
+                    icon: 'text-blue-100',
+                    title: 'text-white'
+                },
+                red: {
+                    bg: 'linear-gradient(135deg, #2d0d0d 0%, #7f1d1d 50%, #2d0d0d 100%)',
+                    shine: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(254,202,202,0.20) 50%, rgba(255,255,255,0) 100%)',
+                    border: 'rgba(239,68,68,0.42)',
+                    icon: 'text-red-100',
+                    title: 'text-white'
+                },
+                dark: {
+                    bg: 'linear-gradient(145deg, #101010 0%, #090909 100%)',
+                    shine: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(212,175,55,0.16) 50%, rgba(255,255,255,0) 100%)',
+                    border: 'rgba(212,175,55,0.18)',
+                    icon: 'text-[#d4af37]',
+                    title: 'text-white'
+                }
+            };
+
+            const techCards = [
+                { key: 'calculadoras', label: 'CALCULADORAS', sublabel: 'FPS • JOULE • ROF', icon: 'calculator', cardClass: 'card-missoes', textClass: 'text-blue-400' },
+                { key: 'guias', label: 'GUIAS TÉCNICOS', sublabel: 'SHIMMING E VEDAÇÃO', icon: 'book-open', cardClass: 'card-faturamento', textClass: 'text-orange-400' },
+                { key: 'desmontagem', label: 'DESMONTAGEM', sublabel: 'GEARBOX V2 / V3', icon: 'settings', cardClass: 'card-pagas', textClass: 'text-green-400' },
+                { key: 'eletrica', label: 'ELÉTRICA', sublabel: 'MOSFET E FIAÇÃO', icon: 'zap', cardClass: 'card-custos', textClass: 'text-red-400' },
+                { key: 'precisao', label: 'PRECISÃO', sublabel: 'HOP-UP E CANO', icon: 'crosshair', cardClass: 'card-lucro', textClass: 'text-green-400' },
+                { key: 'projetos', label: 'PROJETOS', sublabel: 'PCB • BURST • BANCADA', icon: 'cpu', cardClass: 'card-missoes', textClass: 'text-blue-400' },
+                { key: 'faq', label: 'FAQ / QNA', sublabel: 'DIAGNÓSTICO RÁPIDO', icon: 'help-circle', cardClass: 'card-faturamento', textClass: 'text-orange-400' },
+                { key: 'links', label: 'REFERÊNCIAS', sublabel: 'ROTINA E CHECKLIST', icon: 'link', cardClass: 'card-pendentes', textClass: 'text-yellow-400' }
+            ];
+
+            const guideData = [
+                { title: 'SHIMMING AEG', tag: 'GEARBOX', text: 'Ajuste fino dos shims para reduzir ruído, atrito e desgaste. Monte primeiro o spur, feche a gearbox com parafusos, teste folga vertical mínima; depois sector e por último bevel. Finalize ajustando altura do motor pelo menor ruído possível.' },
+                { title: 'AEG AIR SEAL', tag: 'VEDAÇÃO', text: 'Revise nozzle, bucking, cabeça de cilindro, cabeça de pistão e O-ring. Teste compressão com o dedo no bico do cilindro: o pistão deve resistir. Se houver perda, revise O-ring, lubrificação leve e encaixe do nozzle no hop-up.' },
+                { title: 'O-RING EXPANSION', tag: 'COMPRESSÃO', text: 'Expansão controlada do O-ring do pistão pode recuperar vedação, mas deve ser feita com cuidado. O-ring apertado demais cria atrito, reduz cadência e força motor/engrenagens.' },
+                { title: 'BARREL STABILIZATION', tag: 'PRECISÃO', text: 'Elimine folga do cano interno usando estabilização adequada. Cano vibrando abre agrupamento. Centralize sem pressionar demais e faça limpeza antes dos testes.' },
+                { title: 'CYLINDER TO BARREL RATIO', tag: 'VOLUME', text: 'Combine volume do cilindro com comprimento do cano e peso da BB. Volume baixo perde eficiência em cano longo; volume exagerado pode gerar turbulência e inconsistência.' },
+                { title: 'MOTOR HEIGHT', tag: 'AJUSTE', text: 'Motor alto demais grita e força engrenagens; baixo demais patina e desgasta pinhão/bevel. Ajuste com disparos curtos até encontrar som limpo.' },
+                { title: 'AOE / PISTON', tag: 'DURABILIDADE', text: 'Corrija o ângulo de engate do primeiro dente do pistão quando necessário. AOE ruim quebra dentes e sobrecarrega o conjunto em molas fortes ou setups rápidos.' },
+                { title: 'GEAR RATIO', tag: 'CADÊNCIA', text: 'Relação baixa favorece resposta e ROF, mas exige motor e bateria fortes. Relação alta favorece torque. Combine mola, motor, bateria, mosfet e uso final.' },
+                { title: 'HOP-UP E BUCKING', tag: 'ALCANCE', text: 'Bucking/nub corretos geralmente dão mais resultado que apenas trocar cano. Escolha dureza conforme FPS e peso da BB. Instale sem torcer e confira vedação com nozzle.' },
+                { title: 'ELECTRIC SYSTEM', tag: 'ELÉTRICA', text: 'Fiação, conectores e contatos afetam resposta. Deans/T-Plug, mosfet e cabos adequados reduzem perda elétrica, aquecimento e falhas de ciclo.' }
+            ];
+
+            const projectData = [
+                { title: 'BURST MODE MOSFET', text: 'Controle eletrônico para rajadas curtas, proteção de contato e melhor resposta no gatilho. Exige leitura correta do ciclo e proteção contra overspin.' },
+                { title: 'CAPACITOR BANK', text: 'Banco de capacitores pode apoiar picos de corrente, mas exige dimensionamento, polaridade correta, isolamento e descarga segura. Não substitui bateria ruim.' },
+                { title: 'PCB DE BANCADA', text: 'Base para testes elétricos rápidos com conector de bateria, fusível, chave, motor, leitura de tensão e saída organizada para diagnóstico.' },
+                { title: 'CRONOPHONE / CRONO SETUP', text: 'Área para usar conversões de FPS, m/s e Joule durante diagnóstico de potência, padronizando BB, peso e energia final.' },
+                { title: 'CHECKLIST DIGITAL', text: 'Registrar sintomas, peças trocadas, FPS inicial/final, bateria usada, BB usada e observações reduz retrabalho e melhora a entrega ao cliente.' }
+            ];
+
+            const faqData = [
+                { q: 'Qual diagnóstico faço antes de abrir uma AEG?', a: 'Remova magazine, teste bateria, fusível, conectores, motor, carregador, hop-up e cronagem. Abra gearbox só depois de isolar sintomas.' },
+                { q: 'FPS alto sempre significa melhor alcance?', a: 'Não. Alcance depende de hop-up, bucking, vedação, peso da BB, cano e consistência.' },
+                { q: 'Quando o shimming está bom?', a: 'Quando as engrenagens giram livres, sem travar, com folga vertical mínima e som limpo após ajuste do motor.' },
+                { q: 'Por que a arma dá tiro fraco e varia FPS?', a: 'Normalmente é vedação: O-ring, nozzle, bucking, cabeça de cilindro ou alinhamento hop-up/gearbox.' },
+                { q: 'Quando usar mosfet?', a: 'Sempre que quiser proteger contatos, usar LiPo com mais segurança elétrica e melhorar resposta. Em setup forte é recomendado.' },
+                { q: 'Qual upgrade vale mais para precisão?', a: 'Bucking/nub bom, cano limpo e estabilizado, vedação consistente e BB de qualidade.' },
+                { q: 'Motor esquenta muito, o que verificar?', a: 'Altura do motor, shimming apertado, mola pesada, bateria fraca, engrenagens travando, curto ou motor inadequado.' }
+            ];
+
+            const setFormValue = (setter, field, value) => setter(prev => ({ ...prev, [field]: value }));
+            const numberValue = (value) => Number(String(value || '').replace(',', '.')) || 0;
+
+            const energyResult = useMemo(() => {
+                const weightKg = numberValue(energyForm.weight) / 1000;
+                const rawValue = numberValue(energyForm.value);
+                if (!weightKg || !rawValue) return null;
+                let ms = rawValue;
+                let joule = rawValue;
+                if (energyForm.mode === 'fps') {
+                    ms = rawValue * 0.3048;
+                    joule = 0.5 * weightKg * ms * ms;
+                } else if (energyForm.mode === 'ms') {
+                    ms = rawValue;
+                    joule = 0.5 * weightKg * ms * ms;
+                } else {
+                    joule = rawValue;
+                    ms = Math.sqrt((2 * joule) / weightKg);
+                }
+                const fps = ms / 0.3048;
+                return { fps, ms, joule };
+            }, [energyForm]);
+
+            const rofResult = useMemo(() => {
+                const rpm = numberValue(rofForm.rpm);
+                const ratio = numberValue(rofForm.ratio);
+                const efficiency = numberValue(rofForm.efficiency) / 100;
+                if (!rpm || !ratio || !efficiency) return null;
+                const rps = (rpm / ratio / 60) * efficiency;
+                return { rps, rpmReal: rps * 60 };
+            }, [rofForm]);
+
+            const volumeResult = useMemo(() => {
+                const cd = numberValue(volumeForm.cylDiameter);
+                const cl = numberValue(volumeForm.cylLength);
+                const bd = numberValue(volumeForm.barrelDiameter);
+                const bl = numberValue(volumeForm.barrelLength);
+                if (!cd || !cl || !bd || !bl) return null;
+                const cyl = Math.PI * Math.pow(cd / 2, 2) * cl;
+                const barrel = Math.PI * Math.pow(bd / 2, 2) * bl;
+                return { ratio: cyl / barrel, cyl, barrel };
+            }, [volumeForm]);
+
+            const getBbRecommendation = (ratio) => {
+                const value = Number(ratio || 0);
+                if (!value) return '—';
+                if (value < 1.70) return 'BB 0.20g / 0.23g';
+                if (value < 2.00) return 'BB 0.25g';
+                if (value < 2.30) return 'BB 0.28g';
+                if (value < 2.60) return 'BB 0.30g / 0.32g';
+                return 'BB 0.36g+';
+            };
+
+            const springResult = useMemo(() => {
+                const current = numberValue(springForm.currentFps);
+                const target = numberValue(springForm.targetFps);
+                if (!current || !target) return null;
+                return { pct: ((target - current) / current) * 100, diff: target - current };
+            }, [springForm]);
+
+            const TechHeader = ({ title, subtitle, backHome = false }) => (
+                <div className="os-card rounded-2xl p-4 border border-[#d4af37]/15">
+                    <div className="flex items-center gap-3">
+                        <button onClick={backHome ? () => setTechView('home') : onBack} className="btn-icon rounded-xl bg-white/5 border border-white/10 text-[#d4af37]">
+                            <i data-lucide="arrow-left" className="w-5 h-5"></i>
+                        </button>
+                        <div className="text-center flex-1">
+                            <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">{title}</p>
+                            <p className="text-[9px] text-gray-500 font-mono">{subtitle}</p>
+                        </div>
+                        <div className="w-11 h-11 rounded-full overflow-hidden border border-[#d4af37]/30">
+                            <img src={LOGO_URL} className="w-full h-full object-cover logo-premium-animated" />
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const TechDashCard = ({ item }) => (
+                <button
+                    onClick={() => setTechView(item.key)}
+                    className={`${item.cardClass} min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}
+                >
+                    <div className="flex items-center justify-center mb-2">
+                        <i data-lucide={item.icon} className={`w-8 h-8 ${item.textClass}`}></i>
+                    </div>
+                    <p className={`text-[10px] font-usarmy mb-1 ${item.textClass}`}>{item.label}</p>
+                    <p className="text-[10px] text-gray-400 font-bold">{item.sublabel}</p>
+                </button>
+            );
+
+            const InfoCard = ({ icon, title, tag, children, tone = 'gold' }) => (
+                <div className="os-card rounded-xl p-4 border border-white/5">
+                    <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone === 'green' ? 'bg-green-500/10 border border-green-500/25' : tone === 'blue' ? 'bg-blue-500/10 border border-blue-500/25' : tone === 'red' ? 'bg-red-500/10 border border-red-500/25' : 'bg-[#d4af37]/10 border border-[#d4af37]/25'}`}>
+                            <i data-lucide={icon || 'wrench'} className={`w-5 h-5 ${tone === 'green' ? 'text-green-400' : tone === 'blue' ? 'text-blue-400' : tone === 'red' ? 'text-red-400' : 'text-[#d4af37]'}`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="font-usarmy text-white text-xs">{title}</p>
+                                {tag && <span className="text-[8px] font-mono text-[#d4af37] border border-[#d4af37]/20 rounded-full px-2 py-1">{tag}</span>}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-2 leading-5">{children}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderHome = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="ALCANTARA TECH" subtitle="BIBLIOTECA TÉCNICA DA OFICINA" />
+                    <div className="os-card rounded-2xl p-4 border border-[#d4af37]/15">
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded-xl bg-white/5 p-3"><p className="text-[8px] text-gray-500 font-mono">MÓDULOS</p><p className="font-usarmy text-[#d4af37] text-sm">8</p></div>
+                            <div className="rounded-xl bg-white/5 p-3"><p className="text-[8px] text-gray-500 font-mono">FORMATO</p><p className="font-usarmy text-green-400 text-sm">CARDS</p></div>
+                            <div className="rounded-xl bg-white/5 p-3"><p className="text-[8px] text-gray-500 font-mono">PADRÃO</p><p className="font-usarmy text-white text-sm">APP</p></div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        {techCards.map(item => <TechDashCard key={item.key} item={item} />)}
+                    </div>
+                    <div className="os-card rounded-xl p-4 border border-white/5">
+                        <p className="font-usarmy text-[#d4af37] text-xs mb-2">ROTINA RÁPIDA DE BANCADA</p>
+                        <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-400">
+                            <div className="bg-black/25 rounded-lg p-3 border border-white/5">1. Confirmar sintoma</div>
+                            <div className="bg-black/25 rounded-lg p-3 border border-white/5">2. Testar bateria</div>
+                            <div className="bg-black/25 rounded-lg p-3 border border-white/5">3. Medir FPS/Joule</div>
+                            <div className="bg-black/25 rounded-lg p-3 border border-white/5">4. Checar vedação</div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderCalculadoras = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="CALCULADORAS" subtitle="FERRAMENTAS DE BANCADA" backHome />
+                    <div className="os-card rounded-xl p-4">
+                        <p className="font-usarmy text-[#d4af37] text-xs mb-3">FPS / M-S / JOULE</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <select value={energyForm.mode} onChange={e => setFormValue(setEnergyForm, 'mode', e.target.value)} className="p-3 rounded-xl text-sm">
+                                <option value="fps">Tenho FPS</option>
+                                <option value="ms">Tenho m/s</option>
+                                <option value="joule">Tenho Joule</option>
+                            </select>
+                            <input value={energyForm.weight} onChange={e => setFormValue(setEnergyForm, 'weight', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="BB g" />
+                            <input value={energyForm.value} onChange={e => setFormValue(setEnergyForm, 'value', e.target.value)} className="col-span-2 p-3 rounded-xl text-sm" placeholder="Valor" />
+                        </div>
+                        {energyResult && (
+                            <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                                <div className="bg-black/30 p-3 rounded-xl"><p className="text-[8px] text-gray-500">FPS</p><p className="font-usarmy text-white text-xs">{energyResult.fps.toFixed(1)}</p></div>
+                                <div className="bg-black/30 p-3 rounded-xl"><p className="text-[8px] text-gray-500">M/S</p><p className="font-usarmy text-white text-xs">{energyResult.ms.toFixed(1)}</p></div>
+                                <div className="bg-black/30 p-3 rounded-xl"><p className="text-[8px] text-gray-500">JOULE</p><p className="font-usarmy text-[#d4af37] text-xs">{energyResult.joule.toFixed(2)}</p></div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="os-card rounded-xl p-4">
+                        <p className="font-usarmy text-[#d4af37] text-xs mb-3">ROF ESTIMADO</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <input value={rofForm.rpm} onChange={e => setFormValue(setRofForm, 'rpm', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="RPM" />
+                            <input value={rofForm.ratio} onChange={e => setFormValue(setRofForm, 'ratio', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Ratio" />
+                            <input value={rofForm.efficiency} onChange={e => setFormValue(setRofForm, 'efficiency', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Ef. %" />
+                        </div>
+                        {rofResult && <div className="mt-3 bg-black/30 p-3 rounded-xl text-center"><p className="text-[8px] text-gray-500">CADÊNCIA ESTIMADA</p><p className="font-usarmy text-green-400 text-sm">{rofResult.rps.toFixed(1)} RPS • {rofResult.rpmReal.toFixed(0)} RPM FINAL</p></div>}
+                    </div>
+                    <div className="os-card rounded-xl p-4">
+                        <p className="font-usarmy text-[#d4af37] text-xs mb-3">CYLINDER / BARREL RATIO</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <input value={volumeForm.cylDiameter} onChange={e => setFormValue(setVolumeForm, 'cylDiameter', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Cil. diâmetro" />
+                            <input value={volumeForm.cylLength} onChange={e => setFormValue(setVolumeForm, 'cylLength', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Cil. comprimento" />
+                            <input value={volumeForm.barrelDiameter} onChange={e => setFormValue(setVolumeForm, 'barrelDiameter', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Cano diâmetro" />
+                            <input value={volumeForm.barrelLength} onChange={e => setFormValue(setVolumeForm, 'barrelLength', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="Cano comprimento" />
+                        </div>
+                        {volumeResult && (
+                            <div className="grid grid-cols-2 gap-2 mt-3 text-center">
+                                <div className="bg-black/30 p-3 rounded-xl">
+                                    <p className="text-[8px] text-gray-500">RELAÇÃO DE VOLUME</p>
+                                    <p className="font-usarmy text-[#d4af37] text-sm">{volumeResult.ratio.toFixed(2)} : 1</p>
+                                </div>
+                                <div className="bg-black/30 p-3 rounded-xl border border-cyan-400/15">
+                                    <p className="text-[8px] text-gray-500">BB CORRESPONDENTE</p>
+                                    <p className="font-usarmy text-cyan-300 text-xs">{getBbRecommendation(volumeResult.ratio)}</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="os-card rounded-xl p-4">
+                        <p className="font-usarmy text-[#d4af37] text-xs mb-3">AJUSTE DE MOLA</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <input value={springForm.currentFps} onChange={e => setFormValue(setSpringForm, 'currentFps', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="FPS atual" />
+                            <input value={springForm.targetFps} onChange={e => setFormValue(setSpringForm, 'targetFps', e.target.value)} className="p-3 rounded-xl text-sm" placeholder="FPS alvo" />
+                        </div>
+                        {springResult && <div className="mt-3 bg-black/30 p-3 rounded-xl text-center"><p className="text-[8px] text-gray-500">DIFERENÇA</p><p className="font-usarmy text-white text-sm">{springResult.diff.toFixed(0)} FPS • {springResult.pct.toFixed(1)}%</p></div>}
+                    </div>
+                </div>
+            );
+
+            const renderGuias = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="GUIAS TÉCNICOS" subtitle="CONTEÚDO ORGANIZADO POR CARD" backHome />
+                    {guideData.map((g, i) => (
+                        <InfoCard key={g.title} icon={i % 2 ? 'wrench' : 'shield-check'} title={g.title} tag={g.tag} tone={i % 3 === 0 ? 'gold' : i % 3 === 1 ? 'green' : 'blue'}>
+                            {g.text}
+                        </InfoCard>
+                    ))}
+                </div>
+            );
+
+            const renderDesmontagem = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="DESMONTAGEM" subtitle="REFERÊNCIA RÁPIDA DE PLATAFORMAS" backHome />
+                    <InfoCard icon="box" title="ANTES DE ABRIR" tag="CHECKLIST">Fotografe a posição das peças, retire mola sob tensão com cuidado, organize parafusos por setor e confira se há peças proprietárias.</InfoCard>
+                    <InfoCard icon="settings" title="GEARBOX V2" tag="M4">Atenção ao alinhamento do motor, selector plate, tappet plate, anti-reversal latch e compressão do conjunto pneumático.</InfoCard>
+                    <InfoCard icon="settings-2" title="GEARBOX V3" tag="AK / G36">Observe montagem do gatilho, seletor externo, gaiola do motor e passagem dos fios para evitar esmagamento.</InfoCard>
+                    <InfoCard icon="package" title="SHOTGUN / GBB / HPA" tag="ESPECIAL">Separe por sistema. Em GBB priorize vedação, lubrificação correta e peças de ciclo. Em HPA valide linha, regulador e pressão.</InfoCard>
+                </div>
+            );
+
+            const renderEletrica = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="ELÉTRICA" subtitle="BATERIA, MOSFET E RESPOSTA" backHome />
+                    <InfoCard icon="battery-charging" title="BATERIA" tag="TESTE" tone="green">Verifique tensão, C-rating, conector e queda sob carga. Bateria fraca simula motor ruim e falha de ciclo.</InfoCard>
+                    <InfoCard icon="zap" title="MOSFET" tag="PROTEÇÃO" tone="red">Protege contatos, melhora resposta e permite recursos como active brake e pré-cocking quando compatível.</InfoCard>
+                    <InfoCard icon="cable" title="FIAÇÃO E CONECTORES" tag="PERDA" tone="gold">Cabos finos, conector ruim e solda fria geram aquecimento e perda de desempenho. Prefira conexão firme e isolamento limpo.</InfoCard>
+                    <InfoCard icon="activity" title="DIAGNÓSTICO" tag="ORDEM" tone="blue">Teste bateria, fusível, conector, motor fora da gearbox, continuidade e somente depois abra a caixa.</InfoCard>
+                </div>
+            );
+
+            const renderPrecisao = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="PRECISÃO" subtitle="HOP-UP, CANO E CONSISTÊNCIA" backHome />
+                    <InfoCard icon="target" title="HOP-UP" tag="ALCANCE">Bucking, nub e pressão correta definem o backspin. Ajuste exagerado rouba energia e instabiliza trajetória.</InfoCard>
+                    <InfoCard icon="ruler" title="CANO INTERNO" tag="AGRUPAMENTO" tone="green">Limpeza, centralização e compatibilidade com o bucking importam mais que apenas comprimento.</InfoCard>
+                    <InfoCard icon="gauge" title="CONSISTÊNCIA" tag="FPS" tone="blue">Variação baixa de FPS indica vedação boa. Se há oscilação, revise nozzle, bucking e conjunto de compressão.</InfoCard>
+                    <InfoCard icon="crosshair" title="BB E PESO" tag="CAMPO" tone="gold">BB mais pesada pode melhorar estabilidade, desde que o volume e hop-up suportem o setup.</InfoCard>
+                </div>
+            );
+
+            const renderProjetos = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="PROJETOS" subtitle="IDEIAS E MODS DE OFICINA" backHome />
+                    {projectData.map((p, i) => (
+                        <InfoCard key={p.title} icon={i % 2 ? 'cpu' : 'flask-conical'} title={p.title} tag="PROJETO" tone={i % 2 ? 'blue' : 'green'}>
+                            {p.text}
+                        </InfoCard>
+                    ))}
+                </div>
+            );
+
+            const renderFaq = () => (
+                <div className="p-4 space-y-4 animate-fadeIn">
+                    <TechHeader title="FAQ / QNA" subtitle="RESPOSTAS RÁPIDAS NA BANCADA" backHome />
+                    {faqData.map(item => (
+                        <div key={item.q} className="os-card rounded-xl p-4 border border-white/5">
+                            <p className="font-usarmy text-[#d4af37] text-xs">{item.q}</p>
+                            <p className="text-xs text-gray-400 mt-2 leading-5">{item.a}</p>
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const renderLinks = () => {
+                const selectedMaintenance = maintenances.find(item => item.id === selectedMaintenanceId);
+                const query = maintenanceSearch.trim().toLowerCase();
+                const filteredMaintenances = maintenances.filter(item => {
+                    if (!query) return true;
+                    return [item.brand, item.model, item.serial, item.notes].some(value => String(value || '').toLowerCase().includes(query));
+                });
+
+                if (selectedMaintenance) {
+                    return (
+                        <div className="p-4 space-y-4 animate-fadeIn">
+                            <TechHeader title="FICHA TÉCNICA" subtitle="DADOS SALVOS DO EQUIPAMENTO" backHome />
+                            <div className="os-card rounded-2xl p-5 border border-cyan-400/20">
+                                <div className="flex items-start justify-between gap-3 mb-4">
+                                    <div className="min-w-0">
+                                        <p className="font-usarmy text-cyan-300 text-xs tracking-widest">{selectedMaintenance.brand || 'MARCA NÃO INFORMADA'}</p>
+                                        <h3 className="font-usarmy text-[#d4af37] text-xl mt-1 break-words">{selectedMaintenance.model}</h3>
+                                    </div>
+                                    <div className="w-12 h-12 rounded-2xl bg-cyan-400/10 border border-cyan-400/25 flex items-center justify-center flex-shrink-0">
+                                        <i data-lucide="clipboard-list" className="w-6 h-6 text-cyan-300"></i>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 text-sm">
+                                    <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">MARCA</p>
+                                        <p className="text-white font-bold">{selectedMaintenance.brand || 'Não informado'}</p>
+                                    </div>
+                                    <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">MODELO</p>
+                                        <p className="text-white font-bold">{selectedMaintenance.model}</p>
+                                    </div>
+                                    <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">NÚMERO DE SÉRIE</p>
+                                        <p className="text-white font-bold">{selectedMaintenance.serial || 'Não informado'}</p>
+                                    </div>
+                                    <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                        <p className="text-[9px] text-gray-500 font-mono mb-1">OBSERVAÇÕES DA MANUTENÇÃO</p>
+                                        <p className="text-gray-300 leading-6 whitespace-pre-wrap">{selectedMaintenance.notes || 'Sem observações cadastradas.'}</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mt-5">
+                                    <button onClick={() => editMaintenanceRecord(selectedMaintenance)} className="p-4 rounded-xl border border-[#d4af37]/25 bg-[#d4af37]/10 text-[#d4af37] font-usarmy text-xs">EDITAR</button>
+                                    <button onClick={() => deleteMaintenanceRecord(selectedMaintenance.id)} className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 font-usarmy text-xs">EXCLUIR</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="p-4 space-y-4 animate-fadeIn">
+                        <TechHeader title="REFERÊNCIAS" subtitle="CADASTRO TÉCNICO DE EQUIPAMENTOS" backHome />
+                        <div className="os-card rounded-2xl p-5 border border-[#d4af37]/15">
+                            <p className="font-usarmy text-[#d4af37] text-sm mb-2">NOVO CADASTRO</p>
+                            <p className="text-xs text-gray-500 leading-5 mb-4">Dados básicos para abrir a ficha individual do equipamento.</p>
+                            <div className="space-y-3">
+                                <input value={maintenanceForm.brand} onChange={e => setMaintenanceField('brand', e.target.value)} className="w-full p-4 rounded-2xl text-base" placeholder="Marca" />
+                                <input value={maintenanceForm.model} onChange={e => setMaintenanceField('model', e.target.value)} className="w-full p-4 rounded-2xl text-base" placeholder="Modelo do equipamento *" />
+                                <input value={maintenanceForm.serial} onChange={e => setMaintenanceField('serial', e.target.value)} className="w-full p-4 rounded-2xl text-base" placeholder="Número de série (se tiver)" />
+                                <textarea value={maintenanceForm.notes} onChange={e => setMaintenanceField('notes', e.target.value)} className="w-full p-4 rounded-2xl text-base min-h-[140px] resize-y" placeholder="Observações da manutenção"></textarea>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 mt-4">
+                                <button onClick={clearMaintenanceForm} className="p-4 rounded-2xl border border-white/10 text-gray-300 font-usarmy text-xs">LIMPAR</button>
+                                <button onClick={saveMaintenanceRecord} className="p-4 rounded-2xl gold-gradient font-usarmy text-xs">{editingMaintenanceId ? 'ATUALIZAR' : 'SALVAR'}</button>
+                            </div>
+                        </div>
+
+                        <div className="os-card rounded-2xl p-5 border border-cyan-400/10">
+                            <div className="flex items-center justify-between gap-3 mb-4">
+                                <div>
+                                    <p className="font-usarmy text-cyan-300 text-sm">EQUIPAMENTOS CADASTRADOS</p>
+                                    <p className="text-xs text-gray-500 mt-1">Clique no card para abrir a aba exclusiva.</p>
+                                </div>
+                                <div className="w-12 h-12 rounded-full bg-cyan-400/10 border border-cyan-400/25 flex items-center justify-center text-cyan-300 font-usarmy">{maintenances.length}</div>
+                            </div>
+                            <input value={maintenanceSearch} onChange={e => setMaintenanceSearch(e.target.value)} className="w-full p-4 rounded-2xl text-sm mb-4" placeholder="Buscar por marca, modelo, série ou observação" />
+                            <div className="space-y-3">
+                                {filteredMaintenances.map(item => (
+                                    <button key={item.id} onClick={() => setSelectedMaintenanceId(item.id)} className="w-full text-left os-card rounded-xl p-4 border border-white/5 active:scale-[0.99] transition-all">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="font-usarmy text-[#d4af37] text-sm truncate">{item.model}</p>
+                                                <p className="text-xs text-gray-400 mt-1 truncate">{item.brand || 'Marca não informada'}</p>
+                                                {item.serial && <p className="text-[10px] text-gray-600 font-mono mt-1 truncate">SÉRIE: {item.serial}</p>}
+                                            </div>
+                                            <i data-lucide="chevron-right" className="w-5 h-5 text-cyan-300 flex-shrink-0"></i>
+                                        </div>
+                                    </button>
+                                ))}
+                                {filteredMaintenances.length === 0 && (
+                                    <div className="text-center py-10 border border-dashed border-white/10 rounded-xl">
+                                        <p className="font-usarmy text-gray-600 text-xs">NENHUM EQUIPAMENTO CADASTRADO</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const views = {
+                home: renderHome,
+                calculadoras: renderCalculadoras,
+                guias: renderGuias,
+                desmontagem: renderDesmontagem,
+                eletrica: renderEletrica,
+                precisao: renderPrecisao,
+                projetos: renderProjetos,
+                faq: renderFaq,
+                links: renderLinks
+            };
+
+            return (views[techView] || renderHome)();
+        };
+
+
         const App = () => {
             const { state, dispatch } = useDb();
             const { confirm: confirmDialog, modal: confirmModal } = useConfirm();
@@ -7104,7 +7424,8 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
 
                     switch (view) {
                         case 'dashboard':
-                            // logout pelo header button (useConfirm)
+                            showToast('Você já está no painel principal', 'info');
+                            window.history.pushState({ view: 'dashboard', locked: true, timestamp: Date.now() }, '', window.location.href);
                             break;
 
                         case 'list':
@@ -7134,6 +7455,7 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                         case 'bench_shortcut':
                         case 'assistencia_tecnica':
                         case 'fornecedores':
+                        case 'alcantara_tech':
                             setView('dashboard');
                             break;
 
@@ -7358,6 +7680,10 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                                 onBack={() => setView('dashboard')}
                                 onOpenOrder={(order) => { setSelectedOrder(order); setView('detail'); }}
                             />
+                        )}
+
+                        {view === 'alcantara_tech' && (
+                            <AlcantaraTechIntegrated onBack={() => setView('dashboard')} />
                         )}
 
                         {view === 'profit_analysis' && (
@@ -8521,9 +8847,10 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                             </div>
                             <i data-lucide="arrow-right" className="w-6 h-6 text-[#d4af37]"></i>
                         </button>
-                                <button
+                                <div className="grid grid-cols-2 gap-3 mt-3">
+<button
                                     onClick={() => setView('alcantara_bank')}
-                                    className="w-full gold-gradient p-6 rounded-xl font-usarmy text-base shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-3"
+                                    className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-0"
                                     style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
                                 >
                                     <span
@@ -8531,10 +8858,19 @@ date:isIsoDate(b.date) ? b.date : buildBillDateFromMonth(selectedMonth, Math.min
                                         style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
                                     ></span>
                                     <span className="relative z-10 flex items-center justify-center gap-2">
-                                        <i data-lucide="landmark" className="w-5 h-5"></i>
-                                        Alcantara Bank
+                                        <i data-lucide="landmark" className="w-4 h-4"></i>
+                                        BANK
                                     </span>
                                 </button>
+                                <button
+                                    onClick={() => setView('alcantara_tech')}
+                                    className="w-full p-4 rounded-xl font-usarmy text-xs text-[#d4af37] shadow-2xl relative overflow-hidden border border-[#d4af37]/35 bg-[#0d0d0d] mt-0"
+                                    style={{ boxShadow: '0 0 12px rgba(212,175,55,0.16), 0 0 28px rgba(212,175,55,0.08)' }}
+                                >
+                                    <span className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.16) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}></span>
+                                    <span className="relative z-10 flex items-center justify-center gap-2"><i data-lucide="cpu" className="w-4 h-4"></i>ALCANTARA TECH</span>
+                                </button>
+                                </div>
                                 <div className="grid grid-cols-2 gap-3 mt-3">
                                     <button
                                         onClick={() => setView('fornecedores')}
