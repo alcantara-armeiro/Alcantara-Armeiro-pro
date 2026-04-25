@@ -6941,6 +6941,30 @@
                 { q: 'Motor esquenta muito, o que verificar?', a: 'Altura do motor, shimming apertado, mola pesada, bateria fraca, engrenagens travando, curto ou motor inadequado.' }
             ];
 
+            useEffect(() => {
+                window.__alcantaraTechBack = () => {
+                    if (selectedMaintenanceId) {
+                        setSelectedMaintenanceId(null);
+                        setTechView('links');
+                        setTimeout(() => {
+                            try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+                        }, 60);
+                        return true;
+                    }
+                    if (techView !== 'home') {
+                        setTechView('home');
+                        setTimeout(() => {
+                            try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+                        }, 60);
+                        return true;
+                    }
+                    return false;
+                };
+                return () => {
+                    if (window.__alcantaraTechBack) delete window.__alcantaraTechBack;
+                };
+            }, [techView, selectedMaintenanceId]);
+
             const setFormValue = (setter, field, value) => setter(prev => ({ ...prev, [field]: value }));
             const numberValue = (value) => Number(String(value || '').replace(',', '.')) || 0;
 
@@ -7455,8 +7479,15 @@
                         case 'bench_shortcut':
                         case 'assistencia_tecnica':
                         case 'fornecedores':
-                        case 'alcantara_tech':
                             setView('dashboard');
+                            break;
+
+                        case 'alcantara_tech':
+                            if (window.__alcantaraTechBack && window.__alcantaraTechBack()) {
+                                // Back físico tratado dentro da Área Tech: subpágina -> Área Tech.
+                            } else {
+                                setView('dashboard');
+                            }
                             break;
 
                         case 'gestao_calculadora':
@@ -12320,5 +12351,56 @@ Alcantara Armeiro - Airsoft Repairs
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+
+
+<!-- PATCH ALCANTARA: recarrega ícones Lucide após navegação interna da Tech -->
+<script>
+(function(){
+    if (window.__alcantaraLucideFixInstalled) return;
+    window.__alcantaraLucideFixInstalled = true;
+
+    let lucideFixTimer = null;
+    function refreshAlcantaraIcons(){
+        clearTimeout(lucideFixTimer);
+        lucideFixTimer = setTimeout(function(){
+            try {
+                if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                    window.lucide.createIcons();
+                }
+            } catch (e) {
+                console.warn('Falha ao atualizar ícones Lucide:', e);
+            }
+        }, 40);
+    }
+
+    window.refreshAlcantaraIcons = refreshAlcantaraIcons;
+
+    document.addEventListener('DOMContentLoaded', function(){
+        refreshAlcantaraIcons();
+        setTimeout(refreshAlcantaraIcons, 250);
+        setTimeout(refreshAlcantaraIcons, 700);
+
+        try {
+            const root = document.getElementById('root') || document.body;
+            const observer = new MutationObserver(function(){
+                refreshAlcantaraIcons();
+            });
+            observer.observe(root, { childList: true, subtree: true });
+        } catch (e) {}
+    });
+
+    window.addEventListener('load', refreshAlcantaraIcons);
+    window.addEventListener('popstate', function(){ setTimeout(refreshAlcantaraIcons, 80); });
+    window.addEventListener('hashchange', function(){ setTimeout(refreshAlcantaraIcons, 80); });
+
+    document.addEventListener('click', function(e){
+        if (e.target && e.target.closest && e.target.closest('button, [role="button"], .dashboard-premium-btn, .os-card')) {
+            setTimeout(refreshAlcantaraIcons, 80);
+            setTimeout(refreshAlcantaraIcons, 300);
+        }
+    }, true);
+})();
+</script>
+
 </body>
 </html>
