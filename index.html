@@ -10010,12 +10010,6 @@
                 products: [],
                 defects: '',
                 techReport: '',
-                equipmentBrand: '',
-                equipmentModel: '',
-                equipmentAmmoType: '',
-                equipmentHistoryClassification: 'EM_ANALISE',
-                equipmentHistoryNotes: '',
-                equipmentHistoryEntryId: '',
                 discountType: 'none',
                 discountValue: '',
                 paymentMethod: 'PIX',
@@ -10309,15 +10303,11 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         operationalStatus: formData.operationalStatus || 'ENTRADA',
                         paymentDate: nextPaymentDate
                     };
-                    const syncedHistory = upsertEquipmentHistoryFromOrder(savedOrder);
-                    if (syncedHistory?.id) {
-                        savedOrder = { ...savedOrder, equipmentHistoryEntryId: syncedHistory.id };
-                    }
                     saveCustomerNote(savedOrder.customerName, customerInternalNote);
                     dispatch({ type: 'SAVE_ORDER', order: savedOrder });
                     setFormData(savedOrder);
                     setIsDirty(false);
-                    showToast(syncedHistory?.id ? "✅ Ordem salva e histórico atualizado!" : "✅ Ordem salva com sucesso!", "success");
+                    showToast("✅ Ordem salva com sucesso!", "success");
                     onSave(savedOrder);
                 } catch (err) {
                     if (isNewOrder) {
@@ -10552,59 +10542,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         value={formData.techReport} 
                         onChange={e => updateForm({ techReport: e.target.value })} 
                     />
-
-                    <div className="os-card p-5 rounded-xl space-y-4">
-                        <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
-                            <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO DO EQUIPAMENTO</p>
-                            <button
-                                type="button"
-                                onClick={() => onOpenEquipmentHistory?.()}
-                                className="text-[8px] font-usarmy text-[#d4af37] border border-[#d4af37]/20 px-3 py-2 rounded-lg bg-[#d4af37]/5"
-                            >
-                                ABRIR BANCO
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <input
-                                className="w-full p-4 rounded-xl"
-                                placeholder="Marca do equipamento *"
-                                value={formData.equipmentBrand || ''}
-                                onChange={e => updateForm({ equipmentBrand: e.target.value })}
-                            />
-                            <input
-                                className="w-full p-4 rounded-xl"
-                                placeholder="Modelo do equipamento *"
-                                value={formData.equipmentModel || ''}
-                                onChange={e => updateForm({ equipmentModel: e.target.value })}
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <input
-                                className="w-full p-4 rounded-xl"
-                                placeholder="Tipo de munição"
-                                value={formData.equipmentAmmoType || ''}
-                                onChange={e => updateForm({ equipmentAmmoType: e.target.value })}
-                            />
-                            <select
-                                className="w-full p-4 rounded-xl"
-                                value={formData.equipmentHistoryClassification || 'EM_ANALISE'}
-                                onChange={e => updateForm({ equipmentHistoryClassification: e.target.value })}
-                            >
-                                <option value="EM_ANALISE">EM ANÁLISE</option>
-                                <option value="DEFEITO_RECORRENTE">DEFEITO RECORRENTE</option>
-                                <option value="MAU_USO">MAU USO</option>
-                                <option value="DEFEITO_DE_FABRICA">DEFEITO DE FÁBRICA</option>
-                                <option value="OUTROS">OUTROS</option>
-                            </select>
-                        </div>
-                        <textarea
-                            className="w-full p-4 rounded-xl h-24 resize-none"
-                            placeholder="Observações para o histórico técnico"
-                            value={formData.equipmentHistoryNotes || ''}
-                            onChange={e => updateForm({ equipmentHistoryNotes: e.target.value })}
-                        />
-                        <p className="text-[8px] text-gray-500">Ao salvar uma OS finalizada (PRONTO/ENTREGUE), estes dados alimentam automaticamente o Histórico de Equipamentos.</p>
-                    </div>
 
                     <div className="os-card p-5 rounded-xl space-y-4">
                         <p className="text-[10px] font-usarmy text-gray-500">ETAPA OPERACIONAL</p>
@@ -11601,7 +11538,11 @@ Alcantara Armeiro - Airsoft Repairs
                 showToast("✅ Produto cadastrado!", "success");
             };
 
-            const handleProductUpdated = () => { /* atualização via DbContext */ };
+            const handleProductUpdated = (updatedProduct) => {
+                dispatch({ type: 'UPDATE_PRODUCT', product: updatedProduct });
+                setEditingProduct(null);
+                showToast("✅ Produto atualizado!", "success");
+            };
 
             return (
                 <div className="space-y-6 animate-fadeIn pb-10">
@@ -11776,14 +11717,7 @@ Alcantara Armeiro - Airsoft Repairs
                     stock: stock
                 };
 
-                // dispatch via parent (ProductsManager usa useDb)
-                // Workaround: atualizar localStorage diretamente e notificar
-                const prods = JSON.parse(SafeStorage.getItem('alcantara_products') || '[]');
-                const idx = prods.findIndex(p => p.id === updatedProduct.id);
-                if (idx !== -1) { prods[idx] = updatedProduct; SafeStorage.setItem('alcantara_products', JSON.stringify(prods)); }
-                showToast("✅ Produto atualizado!", "success");
-                onSave();
-                onClose();
+                onSave(updatedProduct);
             };
 
             return (
