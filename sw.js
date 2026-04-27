@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-v7-1-1-premium';
-const RUNTIME_CACHE = 'alcantara-runtime-v7-1-1-premium';
+const CACHE_NAME = 'alcantara-offline-v15-2';
+const RUNTIME_CACHE = 'alcantara-runtime-v15-2';
 
 const CORE_ASSETS = [
   './',
@@ -14,8 +14,7 @@ const CORE_ASSETS = [
   './icons/icon-152x152.png',
   './icons/icon-192x192.png',
   './icons/icon-384x384.png',
-  './icons/icon-512x512.png',
-  './icons/logo.jpg'
+  './icons/icon-512x512.png'
 ];
 
 const EXTERNAL_ASSETS = [
@@ -25,26 +24,34 @@ const EXTERNAL_ASSETS = [
   'https://unpkg.com/@babel/standalone/babel.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://unpkg.com/lucide@latest',
-  'https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap',
+  'https://i.ibb.co/LFtsfFp/logo.jpg'
 ];
+
+async function safeCachePut(cache, url) {
+  try {
+    const isExternal = /^https?:\/\//i.test(url) && !url.startsWith(self.location.origin);
+    const request = new Request(url, {
+      mode: isExternal ? 'no-cors' : 'same-origin',
+      credentials: isExternal ? 'omit' : 'same-origin',
+      cache: 'reload'
+    });
+    const response = await fetch(request);
+    if (response && (response.ok || response.type === 'opaque' || response.type === 'basic')) {
+      await cache.put(request, response.clone());
+      if (typeof url === 'string') {
+        await cache.put(url, response.clone()).catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.warn('[SW] Falha ao cachear:', url, error);
+  }
+}
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);
-
-    await Promise.allSettled(
-      EXTERNAL_ASSETS.map(async (url) => {
-        try {
-          const request = new Request(url, { mode: 'no-cors', credentials: 'omit' });
-          const response = await fetch(request);
-          await cache.put(request, response);
-        } catch (error) {
-          console.warn('Falha ao pré-cachear asset externo:', url, error);
-        }
-      })
-    );
-
+    await Promise.allSettled([...CORE_ASSETS, ...EXTERNAL_ASSETS].map(url => safeCachePut(cache, url)));
     await self.skipWaiting();
   })());
 });
@@ -67,13 +74,23 @@ self.addEventListener('message', event => {
   }
 });
 
+async function fromCache(request) {
+  return (
+    await caches.match(request, { ignoreSearch: true }) ||
+    await caches.match('./index.html', { ignoreSearch: true }) ||
+    await caches.match('./', { ignoreSearch: true })
+  );
+}
+
 async function cacheFirst(request) {
-  const cached = await caches.match(request, { ignoreSearch: false });
+  const cached = await caches.match(request, { ignoreSearch: true });
   if (cached) return cached;
 
   const response = await fetch(request);
   const cache = await caches.open(RUNTIME_CACHE);
-  cache.put(request, response.clone());
+  if (response && (response.ok || response.type === 'opaque' || response.type === 'basic')) {
+    cache.put(request, response.clone()).catch(() => {});
+  }
   return response;
 }
 
@@ -81,12 +98,17 @@ async function networkFirst(request) {
   try {
     const response = await fetch(request);
     const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(request, response.clone());
+    if (response && (response.ok || response.type === 'opaque' || response.type === 'basic')) {
+      cache.put(request, response.clone()).catch(() => {});
+    }
     return response;
   } catch (error) {
-    const cached = await caches.match(request, { ignoreSearch: true });
+    const cached = await fromCache(request);
     if (cached) return cached;
-    return caches.match('./index.html');
+    return new Response('Alcantara Armeiro offline: abra o app uma vez com internet para gerar o cache.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    });
   }
 }
 
@@ -104,14 +126,7 @@ self.addEventListener('fetch', event => {
   }
 
   if (isSameOrigin) {
-    event.respondWith((async () => {
-      try {
-        return await cacheFirst(request);
-      } catch (error) {
-        const fallback = await caches.match(request, { ignoreSearch: true });
-        return fallback || Response.error();
-      }
-    })());
+    event.respondWith(cacheFirst(request).catch(() => fromCache(request)));
     return;
   }
 
@@ -124,21 +139,9 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('cdnjs.cloudflare.com') ||
     url.hostname.includes('cdn.tailwindcss.com') ||
     url.hostname.includes('fonts.googleapis.com') ||
-    url.hostname.includes('fonts.gstatic.com')
+    url.hostname.includes('fonts.gstatic.com') ||
+    url.hostname.includes('i.ibb.co')
   ) {
-    event.respondWith((async () => {
-      const cached = await caches.match(request, { ignoreSearch: false });
-      if (cached) return cached;
-
-      try {
-        const response = await fetch(request, { mode: request.mode === 'navigate' ? 'cors' : request.mode, credentials: 'omit' });
-        const cache = await caches.open(RUNTIME_CACHE);
-        cache.put(request, response.clone());
-        return response;
-      } catch (error) {
-        const fallback = await caches.match(request, { ignoreSearch: true });
-        return fallback || Response.error();
-      }
-    })());
+    event.respondWith(cacheFirst(request).catch(() => fromCache(request)));
   }
 });
