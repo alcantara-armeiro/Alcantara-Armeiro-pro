@@ -1085,14 +1085,15 @@
                     if (!pExists) {
                         products.push({ ...action.product, id: Date.now().toString(),
                             stock: parseInt(action.product.stock) || 0,
-                            price: parseFloat(action.product.price) || 0 });
+                            price: parseFloat(action.product.price) || 0,
+                            costPrice: parseFloat(action.product.costPrice || action.product.purchasePrice || 0) || 0 });
                         SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                         return { ...state, products };
                     }
                     return state;
                 case 'UPDATE_PRODUCT':
                     products = state.products.map(p => p.id === action.product.id
-                        ? { ...action.product, stock: parseInt(action.product.stock)||0, price: parseFloat(action.product.price)||0 }
+                        ? { ...action.product, stock: parseInt(action.product.stock)||0, price: parseFloat(action.product.price)||0, costPrice: parseFloat(action.product.costPrice || action.product.purchasePrice || 0) || 0 }
                         : p);
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
@@ -1450,7 +1451,8 @@
                         ...product, 
                         id: Date.now().toString(),
                         stock: parseInt(product.stock) || 0,
-                        price: parseFloat(product.price) || 0
+                        price: parseFloat(product.price) || 0,
+                        costPrice: parseFloat(product.costPrice || product.purchasePrice || 0) || 0
                     });
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
@@ -1462,7 +1464,8 @@
                     products[idx] = {
                         ...updatedProduct,
                         stock: parseInt(updatedProduct.stock) || 0,
-                        price: parseFloat(updatedProduct.price) || 0
+                        price: parseFloat(updatedProduct.price) || 0,
+                        costPrice: parseFloat(updatedProduct.costPrice || updatedProduct.purchasePrice || 0) || 0
                     };
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
@@ -1617,6 +1620,24 @@
             const subtotal = calculateSubtotal(order);
             const discount = calculateDiscount(order);
             return Math.max(0, subtotal - discount);
+        };
+
+        const calculateAdvancePayment = (order) => {
+            const total = calculateTotal(order || {});
+            const raw = parseFloat(order?.advancePaymentValue || 0) || 0;
+            return Math.max(0, Math.min(raw, total));
+        };
+
+        const calculateRemainingPayment = (order) => {
+            return Math.max(0, calculateTotal(order || {}) - calculateAdvancePayment(order || {}));
+        };
+
+        const calculatePartsCost = (order) => {
+            return (order?.parts || []).reduce((acc, part) => acc + (parseFloat(part.costTotal ?? part.costPrice ?? 0) || 0), 0);
+        };
+
+        const calculatePartsProfit = (order) => {
+            return (order?.parts || []).reduce((acc, part) => acc + (parseFloat(part.profitTotal ?? 0) || 0), 0);
         };
 
         const PAYMENT_METHOD_OPTIONS = [
@@ -1955,6 +1976,10 @@
             const subtotal = calculateSubtotal(order);
             const discount = calculateDiscount(order);
             const total = calculateTotal(order);
+            const advancePayment = calculateAdvancePayment(order);
+            const remainingPayment = calculateRemainingPayment(order);
+            const partsProfit = calculatePartsProfit(order);
+
 
             const checkPageBreak = (currentY, requiredSpace = 10) => {
                 if (currentY + requiredSpace > PAGE_HEIGHT) {
@@ -2286,7 +2311,11 @@
             }
 
             const paymentReceiptLabel = getPaymentSummaryText(order).replace('Pagamento: ', 'forma de pagamento ');
-            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${total.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.`;
+            const advance = calculateAdvancePayment(order);
+            const remaining = calculateRemainingPayment(order);
+            const receiptAmount = order.paymentStatus === 'PAGO' ? total : advance;
+            const receiptComplement = advance > 0 ? ` Sinal pago: R$ ${advance.toFixed(2)}. Restante: R$ ${remaining.toFixed(2)}.` : '';
+            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${receiptAmount.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.${receiptComplement}`;
 
             const lines = doc.splitTextToSize(receiptText, 140);
             yPos = checkPageBreak(yPos, lines.length * 5);
@@ -2922,43 +2951,42 @@
                     return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
                 };
 
-                const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
+                const syncableOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO' || calculateAdvancePayment(o) > 0);
                 setTransactions(prev => {
-                    const next = [...prev];
-                    const existingSyncIds = new Set(next.filter(t => t.syncSource === 'office').map(t => t.syncId));
-                    paidOrders.forEach(order => {
-                        const syncId = String(order.id || order.osNumber);
-                        const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                    const manual = prev.filter(t => t.syncSource !== 'office');
+                    const synced = [];
+                    syncableOrders.forEach(order => {
+                        const baseId = String(order.id || order.osNumber);
+                        const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const advance = Number(calculateAdvancePayment(order) || 0);
+                        const remaining = Math.max(0, total - advance);
                         const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
+                        const advanceDateIso = String(order.advancePaymentDate || '').trim() || orderDateIso;
                         const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
-                        if (!total || existingSyncIds.has(syncId)) return;
-                        next.unshift({
-                            id: 'sync_' + syncId, syncId, syncSource: 'office',
-                            area: 'oficina', type: 'entrada', category: 'Serviço',
-                            description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                            value: total, isPersonalExpense: false,
-                            date: paymentDateIso,
-                            sourceOrderDate: orderDateIso,
-                            paymentDate: paymentDateIso,
-                            obs: 'Auto-importado da oficina'
-                        });
+
+                        if (advance > 0) {
+                            synced.unshift({
+                                id: 'sync_' + baseId + '_sinal', syncId: baseId + '_sinal', orderSyncId: baseId, syncSource: 'office',
+                                area: 'oficina', type: 'entrada', category: 'Sinal de OS',
+                                description: `Sinal OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                                value: advance, isPersonalExpense: false,
+                                date: advanceDateIso, sourceOrderDate: orderDateIso, paymentDate: advanceDateIso,
+                                obs: `Auto-importado da oficina • sinal • ${getPaymentMethodLabel(order.advancePaymentMethod || order.paymentMethod)}`
+                            });
+                        }
+
+                        if (order.paymentStatus === 'PAGO' && remaining > 0) {
+                            synced.unshift({
+                                id: 'sync_' + baseId + '_saldo', syncId: baseId + '_saldo', orderSyncId: baseId, syncSource: 'office',
+                                area: 'oficina', type: 'entrada', category: 'Serviço',
+                                description: `Restante OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                                value: remaining, isPersonalExpense: false,
+                                date: paymentDateIso, sourceOrderDate: orderDateIso, paymentDate: paymentDateIso,
+                                obs: 'Auto-importado da oficina • saldo final'
+                            });
+                        }
                     });
-                    const paidMap = new Map(paidOrders.map(o => [String(o.id||o.osNumber), o]));
-                    return next
-                        .filter(item => item.syncSource !== 'office' || paidMap.has(String(item.syncId)))
-                        .map(item => {
-                            if (item.syncSource !== 'office') return item;
-                            const o = paidMap.get(String(item.syncId));
-                            const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
-                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
-                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
-                            return { ...item, value: total,
-                                description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
-                                date: paymentDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: paymentDateIso
-                            };
-                        });
+                    return normalizeBankTransactions([...synced, ...manual]);
                 });
             }, [orders]);
 
@@ -10026,13 +10054,17 @@
                 discountType: 'none',
                 discountValue: '',
                 paymentMethod: 'PIX',
-                paymentInstallments: 1
+                paymentInstallments: 1,
+                hasAdvancePayment: false,
+                advancePaymentValue: '',
+                advancePaymentDate: '',
+                advancePaymentMethod: 'PIX'
             });
 
             // IMPORTANTE: não mantenha cópia local do catálogo, senão o select fica desatualizado
             // (ex.: quando você cadastra itens no Catálogo/Produtos em outra tela e volta para a OS)
             const catalog = state.catalog || [];
-            const [temp, setTemp] = useState({ name: '', quantity: '', price: '' });
+            const [temp, setTemp] = useState({ name: '', quantity: '', price: '', costPrice: '' });
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
             const [customerInternalNote, setCustomerInternalNote] = useState('');
@@ -10121,6 +10153,7 @@
                     }
 
                     const unitPrice = parseFloat(product.price) || 0;
+                    const costUnitPrice = parseFloat(product.costPrice || product.purchasePrice || 0) || 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         productId: product.id,
@@ -10128,7 +10161,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: 'product'
+                        type: 'product',
+                        costUnitPrice,
+                        costPrice: costUnitPrice,
+                        costTotal: costUnitPrice,
+                        profitTotal: Math.max(0, unitPrice - costUnitPrice)
                     };
 
                     setFormData(prev => ({ ...prev, products: [...(prev.products || []), newItem] }));
@@ -10151,6 +10188,7 @@
                     }
 
                     const unitPrice = parseFloat(item.price) || 0;
+                    const itemCostUnit = (item.type === 'part' || item.type === 'product') ? (parseFloat(item.costPrice || item.costUnitPrice || 0) || 0) : 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         catalogId: item.id,
@@ -10158,7 +10196,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: item.type
+                        type: item.type,
+                        costUnitPrice: itemCostUnit,
+                        costPrice: itemCostUnit,
+                        costTotal: itemCostUnit,
+                        profitTotal: (item.type === 'part' || item.type === 'product') ? Math.max(0, unitPrice - itemCostUnit) : 0
                     };
 
                     if (item.type === 'service') {
@@ -10201,6 +10243,10 @@ const handleAddManual = useCallback(() => {
         }
 
         const totalPrice = unitPrice * quantity;
+        const hasCostControl = type === 'part' || type === 'product';
+        const costUnitPrice = hasCostControl ? (parseFloat(temp.costPrice) || 0) : 0;
+        const costTotal = costUnitPrice * quantity;
+        const profitTotal = hasCostControl ? Math.max(0, totalPrice - costTotal) : 0;
 
         const item = {
             id: Date.now() + Math.random(),
@@ -10208,7 +10254,11 @@ const handleAddManual = useCallback(() => {
             quantity: quantity,
             unitPrice: unitPrice,
             price: totalPrice,
-            type: type
+            type: type,
+            costUnitPrice,
+            costPrice: costTotal,
+            costTotal,
+            profitTotal
         };
 
         setFormData(prev => {
@@ -10224,10 +10274,10 @@ const handleAddManual = useCallback(() => {
 
         dispatch({
             type: 'SAVE_CATALOG_ITEM',
-            item: { name: temp.name.toUpperCase(), price: unitPrice, type }
+            item: { name: temp.name.toUpperCase(), price: unitPrice, type, costPrice: costUnitPrice }
         });
 
-        setTemp({ name: '', quantity: '', price: '' });
+        setTemp({ name: '', quantity: '', price: '', costPrice: '' });
         setSelectedCatalogId('');
         showToast("✅ Item adicionado", "success");
     } catch (err) {
@@ -10311,8 +10361,13 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                     const nextPaymentDate = formData.paymentStatus === 'PAGO'
                         ? (formData.paymentDate || previousOrder?.paymentDate || new Date().toISOString().slice(0,10))
                         : '';
+                    const normalizedAdvanceValue = calculateAdvancePayment(formData);
                     let savedOrder = {
                         ...formData,
+                        hasAdvancePayment: normalizedAdvanceValue > 0,
+                        advancePaymentValue: normalizedAdvanceValue > 0 ? normalizedAdvanceValue : '',
+                        advancePaymentDate: normalizedAdvanceValue > 0 ? (formData.advancePaymentDate || previousOrder?.advancePaymentDate || new Date().toISOString().slice(0,10)) : '',
+                        advancePaymentMethod: formData.advancePaymentMethod || formData.paymentMethod || 'PIX',
                         operationalStatus: formData.operationalStatus || 'ENTRADA',
                         paymentDate: nextPaymentDate
                     };
@@ -10335,6 +10390,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
             const subtotal = calculateSubtotal(formData);
             const discount = calculateDiscount(formData);
             const total = calculateTotal(formData);
+            const advancePayment = calculateAdvancePayment(formData);
+            const remainingPayment = calculateRemainingPayment(formData);
+            const partsProfit = calculatePartsProfit(formData);
 
             return (
                 <div className="space-y-6 pb-10 animate-fadeIn">
@@ -10679,11 +10737,11 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     value={temp.name} 
                                     onChange={e => setTemp({...temp, name: e.target.value})} 
                                 />
-                                <div className="flex gap-2">
+                                <div className={(type === 'part' || type === 'product') ? "grid grid-cols-[0.72fr_1fr_1fr] gap-2" : "grid grid-cols-[0.72fr_1fr] gap-2"}>
                                     <input 
                                         type="number"
                                         min="1"
-                                        className="w-20 p-3 text-sm rounded-lg" 
+                                        className="w-full p-3 text-sm rounded-lg" 
                                         placeholder="Qtde" 
                                         autoComplete="off"
                                         value={temp.quantity} 
@@ -10693,20 +10751,41 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         type="number" 
                                         step="0.01"
                                         min="0"
-                                        className="w-28 p-3 text-sm rounded-lg" 
-                                        placeholder="R$ Unitário" 
+                                        className="w-full p-3 text-sm rounded-lg" 
+                                        placeholder="Venda" 
                                         autoComplete="off"
                                         value={temp.price} 
                                         onChange={e => setTemp({...temp, price: e.target.value})} 
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddManual}
-                                        className="gold-gradient px-4 rounded-lg font-bold text-xl btn-icon"
-                                    >
-                                        +
-                                    </button>
+                                    {(type === 'part' || type === 'product') && (
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="w-full p-3 text-sm rounded-lg"
+                                            placeholder="Custo"
+                                            autoComplete="off"
+                                            value={temp.costPrice}
+                                            onChange={e => setTemp({...temp, costPrice: e.target.value})}
+                                        />
+                                    )}
                                 </div>
+                                {(type === 'part' || type === 'product') && temp.price && temp.costPrice && (
+                                    <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2 flex items-center justify-between">
+                                        <span className="text-[9px] font-usarmy text-gray-500">LUCRO ESTIMADO</span>
+                                        <span className="text-xs font-bold text-green-400">
+                                            R$ {Math.max(0, ((parseFloat(temp.price) || 0) - (parseFloat(temp.costPrice) || 0)) * (parseInt(temp.quantity) || 1)).toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleAddManual}
+                                    className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2 min-h-[50px] shadow-lg shadow-yellow-900/10 active:scale-[0.98]"
+                                >
+                                    <span className="text-lg leading-none">+</span>
+                                    <span>ADICIONAR ITEM AO ORÇAMENTO</span>
+                                </button>
                             </div>
                         </div>
 
@@ -10753,6 +10832,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                             <span className="text-xs text-gray-500 ml-2">
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
+                                        )}
+                                        {Number(item.profitTotal || 0) > 0 && (
+                                            <p className="text-[10px] text-green-400 mt-1">Lucro peça: R$ {Number(item.profitTotal || 0).toFixed(2)}</p>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -10852,6 +10934,56 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 </div>
                             )}
 
+                            <div className="border-t border-white/5 pt-4 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <i data-lucide="hand-coins" className="w-4 h-4 text-[#d4af37]"></i>
+                                        <p className="text-[10px] font-usarmy text-[#d4af37]">SINAL / ENTRADA</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateForm({
+                                            hasAdvancePayment: !formData.hasAdvancePayment,
+                                            advancePaymentValue: !formData.hasAdvancePayment ? (formData.advancePaymentValue || '') : '',
+                                            advancePaymentDate: !formData.hasAdvancePayment ? (formData.advancePaymentDate || new Date().toISOString().slice(0,10)) : ''
+                                        })}
+                                        className={`px-3 py-2 rounded-lg text-[9px] font-usarmy border ${formData.hasAdvancePayment ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-500'}`}
+                                    >
+                                        {formData.hasAdvancePayment ? 'COM SINAL' : 'SEM SINAL'}
+                                    </button>
+                                </div>
+
+                                {formData.hasAdvancePayment && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max={total}
+                                            className="w-full p-4 rounded-xl text-center font-bold"
+                                            placeholder="Valor do sinal"
+                                            value={formData.advancePaymentValue || ''}
+                                            onChange={e => updateForm({ advancePaymentValue: e.target.value })}
+                                        />
+                                        <input
+                                            type="date"
+                                            className="w-full p-4 rounded-xl text-sm"
+                                            value={formData.advancePaymentDate || new Date().toISOString().slice(0,10)}
+                                            onChange={e => updateForm({ advancePaymentDate: e.target.value })}
+                                        />
+                                        <select
+                                            className="col-span-2 w-full p-4 rounded-xl text-sm"
+                                            value={formData.advancePaymentMethod || formData.paymentMethod || 'PIX'}
+                                            onChange={e => updateForm({ advancePaymentMethod: e.target.value })}
+                                        >
+                                            {PAYMENT_METHOD_OPTIONS.map(option => (
+                                                <option key={option.key} value={option.key}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex items-center gap-2 mb-2">
                                 <i data-lucide="tag" className="w-4 h-4 text-[#d4af37]"></i>
                                 <p className="text-[10px] font-usarmy text-[#d4af37]">DESCONTO</p>
@@ -10928,11 +11060,30 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 )}
 
+                                {advancePayment > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-green-400">Sinal pago:</span>
+                                        <span className="text-green-400 font-bold">R$ {advancePayment.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                {partsProfit > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-green-400">Lucro em peças:</span>
+                                        <span className="text-green-400 font-bold">R$ {partsProfit.toFixed(2)}</span>
+                                    </div>
+                                )}
+
                                 <div className="pt-3 border-t border-[#d4af37]/30 space-y-2">
                                     <div className="flex justify-between items-center gap-3">
                                         <span className="font-usarmy text-[#d4af37] text-lg leading-none">TOTAL</span>
                                         <span className="font-usarmy text-[#d4af37] text-2xl leading-none text-right">R$ {total.toFixed(2)}</span>
                                     </div>
+                                    {advancePayment > 0 && (
+                                        <div className="flex justify-between text-[11px] text-gray-400">
+                                            <span>Restante a receber:</span>
+                                            <span className="text-white font-bold">R$ {remainingPayment.toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <div className="text-[11px] text-gray-400 leading-relaxed">
                                         <span className="text-gray-500">Pagamento:</span>{' '}
                                         <span className="text-gray-300">{getPaymentMethodLabel(formData.paymentMethod)}</span>
@@ -11265,8 +11416,13 @@ Alcantara Armeiro - Airsoft Repairs
                 }
 
                 const price = parseFloat(newItem.price);
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
+                    return;
+                }
+
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
                     return;
                 }
 
@@ -11527,6 +11683,7 @@ Alcantara Armeiro - Airsoft Repairs
             const products = state.products;
             const [newProduct, setNewProduct] = useState({ 
                 name: '', 
+                costPrice: '',
                 price: '', 
                 stock: '', 
                 category: 'Assessório',
@@ -11541,13 +11698,18 @@ Alcantara Armeiro - Airsoft Repairs
                 }
 
                 const price = parseFloat(newProduct.price);
+                const costPrice = parseFloat(newProduct.costPrice || 0) || 0;
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
+                    return;
+                }
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
                     return;
                 }
 
-                dispatch({ type: 'SAVE_PRODUCT', product: { ...newProduct, price, stock: parseInt(newProduct.stock) || 0 } });
-                setNewProduct({ name: '', price: '', stock: '', category: 'Assessório', description: '' });
+                dispatch({ type: 'SAVE_PRODUCT', product: { ...newProduct, price, costPrice, stock: parseInt(newProduct.stock) || 0 } });
+                setNewProduct({ name: '', costPrice: '', price: '', stock: '', category: 'Assessório', description: '' });
                 showToast("✅ Produto cadastrado!", "success");
             };
 
@@ -11610,17 +11772,19 @@ Alcantara Armeiro - Airsoft Repairs
                                 step="0.01"
                                 min="0"
                                 className="w-full p-3 rounded-lg text-sm" 
-                                placeholder="Preço R$ *" 
+                                placeholder="Compra R$" 
+                                value={newProduct.costPrice} 
+                                onChange={e => setNewProduct({...newProduct, costPrice: e.target.value})} 
+                            />
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                min="0"
+                                className="w-full p-3 rounded-lg text-sm" 
+                                placeholder="Venda R$ *" 
                                 value={newProduct.price} 
                                 onChange={e => setNewProduct({...newProduct, price: e.target.value})} 
                             />
-                            <button 
-                                onClick={handleAdd} 
-                                className="gold-gradient p-3 rounded-lg font-usarmy text-sm flex items-center justify-center gap-2"
-                            >
-                                <i data-lucide="save" className="w-4 h-4"></i>
-                                CADASTRAR
-                            </button>
                         </div>
 
                         <textarea 
@@ -11629,6 +11793,14 @@ Alcantara Armeiro - Airsoft Repairs
                             value={newProduct.description} 
                             onChange={e => setNewProduct({...newProduct, description: e.target.value})} 
                         />
+
+                        <button 
+                            onClick={handleAdd} 
+                            className="gold-gradient w-full p-4 rounded-xl font-usarmy text-sm flex items-center justify-center gap-2"
+                        >
+                            <i data-lucide="save" className="w-4 h-4"></i>
+                            CADASTRAR PRODUTO
+                        </button>
                     </div>
 
                     <div className="space-y-3">
@@ -11680,11 +11852,20 @@ Alcantara Armeiro - Airsoft Repairs
                                             <i data-lucide="trash-2" className="w-4 h-4"></i>
                                         </button>
                                     </div>
-                                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                                        <span className="text-[#d4af37] font-usarmy text-lg">
-                                            R$ {parseFloat(product.price).toFixed(2)}
-                                        </span>
-                                        <span className={`text-xs font-bold px-2 py-1 rounded ${product.stock > 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center">
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">COMPRA</p>
+                                            <p className="text-xs text-red-400 font-bold">R$ {(parseFloat(product.costPrice || 0) || 0).toFixed(2)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">VENDA</p>
+                                            <p className="text-xs text-[#d4af37] font-bold">R$ {(parseFloat(product.price || 0) || 0).toFixed(2)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p>
+                                            <p className="text-xs text-green-400 font-bold">R$ {Math.max(0, (parseFloat(product.price || 0) || 0) - (parseFloat(product.costPrice || 0) || 0)).toFixed(2)}</p>
+                                        </div>
+                                        <span className={`col-span-3 text-xs font-bold px-2 py-1 rounded ${product.stock > 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
                                             Est: {product.stock || 0}
                                         </span>
                                     </div>
@@ -11706,16 +11887,23 @@ Alcantara Armeiro - Airsoft Repairs
 
         const EditProductModal = ({ product, onSave, onClose }) => {
             const [editData, setEditData] = useState({
+                costPrice: product.costPrice !== undefined && product.costPrice !== null ? product.costPrice.toString() : '0',
                 price: product.price ? product.price.toString() : '0',
                 stock: product.stock !== undefined && product.stock !== null ? product.stock.toString() : '0'
             });
 
             const handleSave = () => {
+                const costPrice = parseFloat(editData.costPrice || 0) || 0;
                 const price = parseFloat(editData.price);
                 const stock = parseInt(editData.stock);
 
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
+                    return;
+                }
+
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
                     return;
                 }
 
@@ -11726,6 +11914,7 @@ Alcantara Armeiro - Airsoft Repairs
 
                 const updatedProduct = {
                     ...product,
+                    costPrice: costPrice,
                     price: price,
                     stock: stock
                 };
@@ -11741,7 +11930,20 @@ Alcantara Armeiro - Airsoft Repairs
 
                         <div className="space-y-4 mb-6">
                             <div>
-                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">PREÇO (R$)</label>
+                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">VALOR DE COMPRA (R$)</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    min="0"
+                                    className="w-full p-4 rounded-xl text-lg font-bold text-center"
+                                    value={editData.costPrice}
+                                    onChange={e => setEditData({...editData, costPrice: e.target.value})}
+                                    placeholder="0.00"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">VALOR DE VENDA (R$)</label>
                                 <input 
                                     type="number" 
                                     step="0.01"
