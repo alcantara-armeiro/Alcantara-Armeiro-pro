@@ -1302,6 +1302,65 @@
             contato: "(11) 96735-1384 | alcantara.armeiro@gmail.com"
         };
 
+
+        // ========== LOGO ROBUSTO PARA PDF ==========
+        // jsPDF pode falhar com imagem externa por CORS/offline. O PDF tenta ícones locais primeiro.
+        const PDF_LOGO_SOURCES = [
+            'icons/icon-512x512.png',
+            'icons/icon-384x384.png',
+            'icons/icon-192x192.png',
+            LOGO_URL
+        ];
+        let PDF_LOGO_CACHE = null;
+        const getPdfLogoFormat = (dataUrl = '') => dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+        const loadPdfLogoFromSource = (src) => new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                try {
+                    const size = Math.max(img.naturalWidth || img.width || 512, img.naturalHeight || img.height || 512);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#050505';
+                    ctx.fillRect(0, 0, size, size);
+                    const drawW = img.naturalWidth || img.width || size;
+                    const drawH = img.naturalHeight || img.height || size;
+                    const scale = Math.min(size / drawW, size / drawH);
+                    const w = drawW * scale;
+                    const h = drawH * scale;
+                    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                    resolve(canvas.toDataURL('image/png'));
+                } catch (error) { reject(error); }
+            };
+            img.onerror = reject;
+            img.src = src;
+            setTimeout(() => reject(new Error('Timeout ao carregar logo')), 4500);
+        });
+        const getPdfLogoDataUrl = async () => {
+            if (PDF_LOGO_CACHE) return PDF_LOGO_CACHE;
+            for (const src of PDF_LOGO_SOURCES) {
+                try {
+                    const dataUrl = await loadPdfLogoFromSource(src);
+                    if (dataUrl) {
+                        PDF_LOGO_CACHE = dataUrl;
+                        return PDF_LOGO_CACHE;
+                    }
+                } catch (_) {}
+            }
+            return null;
+        };
+        const drawPdfLogoFallback = (doc, x = 10, y = 5, w = 35, h = 35) => {
+            doc.setDrawColor(212, 175, 55);
+            doc.setFillColor(8, 8, 8);
+            doc.circle(x + w / 2, y + h / 2, Math.min(w, h) / 2, 'FD');
+            doc.setTextColor(212, 175, 55);
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(Math.max(14, Math.round(w * 0.55)));
+            doc.text('AA', x + w / 2, y + h / 2 + 4, { align: 'center' });
+        };
+
         const STATUS_CONFIG = {
             ABERTA: { color: 'bg-yellow-500', text: 'text-yellow-500', bg: 'bg-yellow-500/20', border: 'border-yellow-500/30', label: 'ABERTA' },
             EM_CURSO: { color: 'bg-blue-500', text: 'text-blue-500', bg: 'bg-blue-500/20', border: 'border-blue-500/30', label: 'EM CURSO' },
@@ -1908,20 +1967,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -2178,20 +2228,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -2389,20 +2430,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -4071,26 +4103,7 @@
 
                 let y = 18;
                 let pageNumber = 1;
-                let logoDataUrl = null;
-
-                try {
-                    const logoImg = new Image();
-                    logoImg.crossOrigin = 'Anonymous';
-                    logoImg.src = LOGO_URL;
-                    await new Promise((resolve, reject) => {
-                        logoImg.onload = resolve;
-                        logoImg.onerror = reject;
-                        setTimeout(reject, 5000);
-                    });
-                    const canvas = document.createElement('canvas');
-                    canvas.width = logoImg.naturalWidth || 300;
-                    canvas.height = logoImg.naturalHeight || 300;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(logoImg, 0, 0);
-                    logoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                } catch (e) {
-                    logoDataUrl = null;
-                }
+                let logoDataUrl = await getPdfLogoDataUrl();
 
                 const moneyPdf = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 const drawFooter = () => {
@@ -4119,7 +4132,7 @@
                     doc.setFillColor(5, 5, 5);
                     doc.rect(0, 0, pageWidth, firstPage ? 42 : 32, 'F');
                     if (logoDataUrl) {
-                        doc.addImage(logoDataUrl, 'JPEG', marginLeft, firstPage ? 6 : 5, firstPage ? 26 : 22, firstPage ? 26 : 22);
+                        doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), marginLeft, firstPage ? 6 : 5, firstPage ? 26 : 22, firstPage ? 26 : 22);
                     } else {
                         doc.setTextColor(212, 175, 55);
                         doc.setFont('helvetica', 'bold');
@@ -4156,7 +4169,7 @@
                     doc.roundedRect(24, 24, pageWidth - 48, 58, 4, 4, 'F');
 
                     if (logoDataUrl) {
-                        doc.addImage(logoDataUrl, 'JPEG', centerX - 20, 32, 40, 40);
+                        doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), centerX - 20, 32, 40, 40);
                     } else {
                         doc.setTextColor(212, 175, 55);
                         doc.setFont('helvetica', 'bold');
