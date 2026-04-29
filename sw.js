@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-offline-v16-20260427';
-const RUNTIME_CACHE = 'alcantara-runtime-v16-20260427';
+const CACHE_NAME = 'alcantara-v7-1-1-premium';
+const RUNTIME_CACHE = 'alcantara-runtime-v7-1-1-premium';
 
 const CORE_ASSETS = [
   './',
@@ -25,29 +25,26 @@ const EXTERNAL_ASSETS = [
   'https://unpkg.com/@babel/standalone/babel.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://unpkg.com/lucide@latest',
-  'https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap',
-  'https://i.ibb.co/LFtsfFp/logo.jpg'
+  'https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap'
 ];
-
-async function addToCache(cache, url, external = false) {
-  try {
-    const request = external
-      ? new Request(url, { mode: 'no-cors', credentials: 'omit', cache: 'reload' })
-      : new Request(url, { cache: 'reload' });
-    const response = await fetch(request);
-    if (response && (response.ok || response.type === 'opaque')) {
-      await cache.put(request, response.clone());
-    }
-  } catch (error) {
-    console.warn('[SW] não cacheou:', url, error);
-  }
-}
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await Promise.allSettled(CORE_ASSETS.map(url => addToCache(cache, url, false)));
-    await Promise.allSettled(EXTERNAL_ASSETS.map(url => addToCache(cache, url, true)));
+    await cache.addAll(CORE_ASSETS);
+
+    await Promise.allSettled(
+      EXTERNAL_ASSETS.map(async (url) => {
+        try {
+          const request = new Request(url, { mode: 'no-cors', credentials: 'omit' });
+          const response = await fetch(request);
+          await cache.put(request, response);
+        } catch (error) {
+          console.warn('Falha ao pré-cachear asset externo:', url, error);
+        }
+      })
+    );
+
     await self.skipWaiting();
   })());
 });
@@ -55,57 +52,93 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(key => ![CACHE_NAME, RUNTIME_CACHE].includes(key)).map(key => caches.delete(key)));
+    await Promise.all(
+      keys
+        .filter(key => ![CACHE_NAME, RUNTIME_CACHE].includes(key))
+        .map(key => caches.delete(key))
+    );
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
-async function indexFallback() {
-  return (await caches.match('./index.html', { ignoreSearch: true })) ||
-         (await caches.match('./', { ignoreSearch: true })) ||
-         new Response('<!doctype html><html><body style="background:#050505;color:#d4af37;font-family:sans-serif;padding:24px">Abra o app uma vez com internet para ativar o modo offline.</body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' }});
+async function cacheFirst(request) {
+  const cached = await caches.match(request, { ignoreSearch: false });
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  const cache = await caches.open(RUNTIME_CACHE);
+  cache.put(request, response.clone());
+  return response;
+}
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    const cache = await caches.open(RUNTIME_CACHE);
+    cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    return caches.match('./index.html');
+  }
 }
 
 self.addEventListener('fetch', event => {
-  const request = event.request;
+  const { request } = event;
   if (request.method !== 'GET') return;
 
-  if (request.mode === 'navigate') {
+  const url = new URL(request.url);
+  const isSameOrigin = url.origin === self.location.origin;
+  const isNavigation = request.mode === 'navigate';
+
+  if (isNavigation) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (isSameOrigin) {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
-        if (response && response.ok) {
-          const cache = await caches.open(RUNTIME_CACHE);
-          cache.put(request, response.clone()).catch(() => {});
-        }
-        return response;
-      } catch (_) {
-        return indexFallback();
+        return await cacheFirst(request);
+      } catch (error) {
+        const fallback = await caches.match(request, { ignoreSearch: true });
+        return fallback || Response.error();
       }
     })());
     return;
   }
 
-  event.respondWith((async () => {
-    const cached = await caches.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-    try {
-      const response = await fetch(request);
-      if (response && (response.ok || response.type === 'opaque')) {
+  if (
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'font' ||
+    request.destination === 'image' ||
+    url.hostname.includes('unpkg.com') ||
+    url.hostname.includes('cdnjs.cloudflare.com') ||
+    url.hostname.includes('cdn.tailwindcss.com') ||
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com')
+  ) {
+    event.respondWith((async () => {
+      const cached = await caches.match(request, { ignoreSearch: false });
+      if (cached) return cached;
+
+      try {
+        const response = await fetch(request, { mode: request.mode === 'navigate' ? 'cors' : request.mode, credentials: 'omit' });
         const cache = await caches.open(RUNTIME_CACHE);
-        cache.put(request, response.clone()).catch(() => {});
+        cache.put(request, response.clone());
+        return response;
+      } catch (error) {
+        const fallback = await caches.match(request, { ignoreSearch: true });
+        return fallback || Response.error();
       }
-      return response;
-    } catch (_) {
-      if (request.destination === 'document') return indexFallback();
-      if (request.destination === 'image') return new Response('', { status: 204 });
-      if (request.destination === 'style') return new Response('', { headers: { 'Content-Type': 'text/css' }});
-      if (request.destination === 'script') return new Response('', { headers: { 'Content-Type': 'application/javascript' }});
-      return Response.error();
-    }
-  })());
+    })());
+  }
 });
