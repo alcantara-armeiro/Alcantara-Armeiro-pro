@@ -585,15 +585,6 @@
             border:2px solid rgba(111,143,66,0.38);
         }
 
-
-        /* MINI MÓDULO PROFISSIONAL DE PEÇAS / PRODUTOS NA OS */
-        .os-manual-grid { display: grid; grid-template-columns: 0.62fr 1fr 1fr; gap: 8px; width: 100%; }
-        .os-add-item-btn { width: 100%; min-height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 10px 24px rgba(212,175,55,0.16); }
-        .os-add-item-btn:active { transform: scale(0.98); }
-        .profit-mini-card { background: linear-gradient(145deg, rgba(13,31,13,0.82) 0%, rgba(10,20,10,0.82) 100%); border: 1px solid rgba(34,197,94,0.22); }
-        .cost-mini-card { background: linear-gradient(145deg, rgba(45,13,13,0.66) 0%, rgba(32,10,10,0.66) 100%); border: 1px solid rgba(239,68,68,0.18); }
-        @media (max-width: 380px) { .os-manual-grid { grid-template-columns: 0.55fr 1fr 1fr; gap: 6px; } .os-manual-grid input { padding-left: 8px !important; padding-right: 8px !important; font-size: 13px !important; } }
-
     </style>
 </head>
 
@@ -1094,14 +1085,15 @@
                     if (!pExists) {
                         products.push({ ...action.product, id: Date.now().toString(),
                             stock: parseInt(action.product.stock) || 0,
-                            price: parseFloat(action.product.price) || 0 });
+                            price: parseFloat(action.product.price) || 0,
+                            costPrice: parseFloat(action.product.costPrice || action.product.purchasePrice || 0) || 0 });
                         SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                         return { ...state, products };
                     }
                     return state;
                 case 'UPDATE_PRODUCT':
                     products = state.products.map(p => p.id === action.product.id
-                        ? { ...action.product, stock: parseInt(action.product.stock)||0, price: parseFloat(action.product.price)||0 }
+                        ? { ...action.product, stock: parseInt(action.product.stock)||0, price: parseFloat(action.product.price)||0, costPrice: parseFloat(action.product.costPrice || action.product.purchasePrice || 0) || 0 }
                         : p);
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                     return { ...state, products };
@@ -1301,7 +1293,7 @@
         };
 
         const LOGO_URL = "https://i.ibb.co/LFtsfFp/logo.jpg";
-        const APP_VERSION = "V15.2";
+        const APP_VERSION = "V15.1";
         const DADOS_EMPRESA = {
             nome: "ALCANTARA ARMEIRO",
             cnpj: "59.601.771/0001-87",
@@ -1459,7 +1451,8 @@
                         ...product, 
                         id: Date.now().toString(),
                         stock: parseInt(product.stock) || 0,
-                        price: parseFloat(product.price) || 0
+                        price: parseFloat(product.price) || 0,
+                        costPrice: parseFloat(product.costPrice || product.purchasePrice || 0) || 0
                     });
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
@@ -1471,7 +1464,8 @@
                     products[idx] = {
                         ...updatedProduct,
                         stock: parseInt(updatedProduct.stock) || 0,
-                        price: parseFloat(updatedProduct.price) || 0
+                        price: parseFloat(updatedProduct.price) || 0,
+                        costPrice: parseFloat(updatedProduct.costPrice || updatedProduct.purchasePrice || 0) || 0
                     };
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
@@ -1628,29 +1622,78 @@
             return Math.max(0, subtotal - discount);
         };
 
-        const getItemCostTotal = (item) => {
-            const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
-            if (item?.costTotal !== undefined && item?.costTotal !== null) return parseFloat(item.costTotal) || 0;
-            const unitCost = parseFloat(item?.costUnitPrice ?? item?.costPrice ?? item?.purchasePrice ?? 0) || 0;
-            return unitCost * quantity;
+        const calculateAdvancePayment = (order) => {
+            const total = calculateTotal(order || {});
+            const raw = parseFloat(order?.advancePaymentValue || 0) || 0;
+            return Math.max(0, Math.min(raw, total));
         };
 
-        const calculateOrderCost = (order) => {
-            const partsCost = (order?.parts || []).reduce((acc, item) => acc + getItemCostTotal(item), 0);
-            const productsCost = (order?.products || []).reduce((acc, item) => acc + getItemCostTotal(item), 0);
-            return partsCost + productsCost;
+        const calculateRemainingPayment = (order) => {
+            return Math.max(0, calculateTotal(order || {}) - calculateAdvancePayment(order || {}));
         };
 
-        const calculateOrderGrossItemProfit = (order) => {
-            const partsSale = (order?.parts || []).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
-            const productsSale = (order?.products || []).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
-            return Math.max(0, partsSale + productsSale - calculateOrderCost(order));
+        const hasOrderAdvancePayment = (order) => calculateAdvancePayment(order || {}) > 0;
+
+        const getOrderPaymentFlow = (order) => {
+            const total = calculateTotal(order || {});
+            const advance = calculateAdvancePayment(order || {});
+            const remaining = Math.max(0, total - advance);
+            const isPaid = order?.paymentStatus === 'PAGO';
+            const hasAdvance = advance > 0;
+
+            if (!hasAdvance && isPaid) {
+                return {
+                    mode: 'avista',
+                    label: '✅ Pago à vista',
+                    bankCategory: 'Receita de serviço',
+                    receiptComplement: ' Pagamento à vista quitado integralmente.',
+                    advance,
+                    remaining,
+                    total
+                };
+            }
+
+            if (hasAdvance && isPaid) {
+                return {
+                    mode: 'sinal_quitado',
+                    label: `✅ Restante quitado: R$ ${remaining.toFixed(2)}`,
+                    bankCategory: 'Receita de serviço',
+                    receiptComplement: ` Sinal pago: R$ ${advance.toFixed(2)}. Restante pago: R$ ${remaining.toFixed(2)}.`,
+                    advance,
+                    remaining,
+                    total
+                };
+            }
+
+            if (hasAdvance) {
+                return {
+                    mode: 'sinal_aberto',
+                    label: `🟡 Sinal recebido: R$ ${advance.toFixed(2)}`,
+                    bankCategory: 'Receita de sinal',
+                    receiptComplement: ` Sinal pago: R$ ${advance.toFixed(2)}. Saldo restante: R$ ${remaining.toFixed(2)}.`,
+                    advance,
+                    remaining,
+                    total
+                };
+            }
+
+            return {
+                mode: isPaid ? 'pago' : 'pendente',
+                label: isPaid ? '✅ PAGO' : '⏳ PENDENTE',
+                bankCategory: isPaid ? 'Receita de serviço' : 'Pendente',
+                receiptComplement: '',
+                advance,
+                remaining,
+                total
+            };
         };
 
-        const calculateOrderNetMargin = (order) => {
-            const subtotal = calculateSubtotal(order);
-            const total = calculateTotal(order);
-            return subtotal > 0 ? Math.max(0, (calculateOrderGrossItemProfit(order) - calculateDiscount(order)) / subtotal * total) : 0;
+        const calculatePartsCost = (order) => {
+            return (order?.parts || []).reduce((acc, part) => acc + (parseFloat(part.costTotal ?? part.costPrice ?? 0) || 0), 0);
+        };
+
+        const calculatePartsProfit = (order) => {
+            return (order?.parts || []).reduce((acc, part) => acc + (parseFloat(part.profitTotal ?? 0) || 0), 0);
         };
 
         const PAYMENT_METHOD_OPTIONS = [
@@ -1791,6 +1834,30 @@
                 });
 
             return relatedOrders[0] || null;
+        };
+
+
+        const getCustomerEquipmentHistoryGroups = (orders, customerName, currentOrderId = null) => {
+            const key = normalizeCustomerKey(customerName);
+            if (!key) return [];
+
+            const grouped = {};
+            asArray(orders)
+                .filter(order => order && order.id !== currentOrderId && normalizeCustomerKey(order.customerName) === key)
+                .sort((a, b) => {
+                    const diff = parsePtBrDate(b.date) - parsePtBrDate(a.date);
+                    if (diff !== 0) return diff;
+                    const osA = parseInt(String(a.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    const osB = parseInt(String(b.osNumber || '0').replace(/\D/g, ''), 10) || 0;
+                    return osB - osA;
+                })
+                .forEach(order => {
+                    const equipmentName = String(order.equipment || 'Equipamento sem nome').trim() || 'Equipamento sem nome';
+                    if (!grouped[equipmentName]) grouped[equipmentName] = [];
+                    grouped[equipmentName].push(order);
+                });
+
+            return Object.entries(grouped).map(([equipment, items]) => ({ equipment, items }));
         };
 
         const getCustomerOperationalProfile = (orders, customerName, currentOrderId = null) => {
@@ -1989,6 +2056,10 @@
             const subtotal = calculateSubtotal(order);
             const discount = calculateDiscount(order);
             const total = calculateTotal(order);
+            const advancePayment = calculateAdvancePayment(order);
+            const remainingPayment = calculateRemainingPayment(order);
+            const partsProfit = calculatePartsProfit(order);
+
 
             const checkPageBreak = (currentY, requiredSpace = 10) => {
                 if (currentY + requiredSpace > PAGE_HEIGHT) {
@@ -2320,7 +2391,11 @@
             }
 
             const paymentReceiptLabel = getPaymentSummaryText(order).replace('Pagamento: ', 'forma de pagamento ');
-            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${total.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.`;
+            const paymentFlow = getOrderPaymentFlow(order);
+            const advance = paymentFlow.advance;
+            const receiptAmount = order.paymentStatus === 'PAGO' ? total : advance;
+            const receiptComplement = paymentFlow.receiptComplement;
+            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${receiptAmount.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.${receiptComplement}`;
 
             const lines = doc.splitTextToSize(receiptText, 140);
             yPos = checkPageBreak(yPos, lines.length * 5);
@@ -2956,50 +3031,56 @@
                     return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
                 };
 
-                const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
+                const syncableOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO' || calculateAdvancePayment(o) > 0);
                 setTransactions(prev => {
-                    const next = [...prev];
-                    const existingSyncIds = new Set(next.filter(t => t.syncSource === 'office').map(t => t.syncId));
-                    paidOrders.forEach(order => {
-                        const syncId = String(order.id || order.osNumber);
-                        const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                    const manual = prev.filter(t => t.syncSource !== 'office');
+                    const synced = [];
+                    syncableOrders.forEach(order => {
+                        const baseId = String(order.id || order.osNumber);
+                        const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const advance = Number(calculateAdvancePayment(order) || 0);
+                        const remaining = Math.max(0, total - advance);
                         const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
+                        const advanceDateIso = String(order.advancePaymentDate || '').trim() || orderDateIso;
                         const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
-                        if (!total || existingSyncIds.has(syncId)) return;
-                        next.unshift({
-                            id: 'sync_' + syncId, syncId, syncSource: 'office',
-                            area: 'oficina', type: 'entrada', category: 'Serviço',
-                            description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                            value: total, isPersonalExpense: false,
-                            itemCost: typeof calculateOrderCost === 'function' ? calculateOrderCost(order) : 0,
-                            itemProfit: typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(order) : 0,
-                            realProfit: typeof calculateOrderNetMargin === 'function' ? calculateOrderNetMargin(order) : 0,
-                            date: paymentDateIso,
-                            sourceOrderDate: orderDateIso,
-                            paymentDate: paymentDateIso,
-                            obs: `Auto-importado da oficina • Lucro peças/produtos: R$ ${(typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(order) : 0).toFixed(2)}`
-                        });
+
+                        if (advance > 0) {
+                            synced.unshift({
+                                id: 'sync_' + baseId + '_sinal', syncId: baseId + '_sinal', orderSyncId: baseId, syncSource: 'office',
+                                area: 'oficina', type: 'entrada', category: 'Receita de sinal',
+                                paymentLabel: 'Sinal pago',
+                                description: `OS #${order.osNumber}`,
+                                value: advance, isPersonalExpense: false,
+                                date: advanceDateIso, sourceOrderDate: orderDateIso, paymentDate: advanceDateIso,
+                                obs: `Auto-importado da oficina • sinal • ${getPaymentMethodLabel(order.advancePaymentMethod || order.paymentMethod)}`
+                            });
+                        }
+
+                        if (order.paymentStatus === 'PAGO') {
+                            if (advance > 0 && remaining > 0) {
+                                synced.unshift({
+                                    id: 'sync_' + baseId + '_saldo', syncId: baseId + '_saldo', orderSyncId: baseId, syncSource: 'office',
+                                    area: 'oficina', type: 'entrada', category: 'Receita de serviço',
+                                    paymentLabel: 'Restante pago',
+                                    description: `OS #${order.osNumber}`,
+                                    value: remaining, isPersonalExpense: false,
+                                    date: paymentDateIso, sourceOrderDate: orderDateIso, paymentDate: paymentDateIso,
+                                    obs: 'Auto-importado da oficina • restante quitado'
+                                });
+                            } else if (advance <= 0 && total > 0) {
+                                synced.unshift({
+                                    id: 'sync_' + baseId + '_avista', syncId: baseId + '_avista', orderSyncId: baseId, syncSource: 'office',
+                                    area: 'oficina', type: 'entrada', category: 'Receita de serviço',
+                                    paymentLabel: 'Pago à vista',
+                                    description: `OS #${order.osNumber}`,
+                                    value: total, isPersonalExpense: false,
+                                    date: paymentDateIso, sourceOrderDate: orderDateIso, paymentDate: paymentDateIso,
+                                    obs: `Auto-importado da oficina • pago à vista • ${getPaymentMethodLabel(order.paymentMethod)}`
+                                });
+                            }
+                        }
                     });
-                    const paidMap = new Map(paidOrders.map(o => [String(o.id||o.osNumber), o]));
-                    return next
-                        .filter(item => item.syncSource !== 'office' || paidMap.has(String(item.syncId)))
-                        .map(item => {
-                            if (item.syncSource !== 'office') return item;
-                            const o = paidMap.get(String(item.syncId));
-                            const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
-                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
-                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
-                            return { ...item, value: total,
-                                itemCost: typeof calculateOrderCost === 'function' ? calculateOrderCost(o) : 0,
-                                itemProfit: typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(o) : 0,
-                                realProfit: typeof calculateOrderNetMargin === 'function' ? calculateOrderNetMargin(o) : 0,
-                                description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
-                                date: paymentDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: paymentDateIso,
-                                obs: `Auto-importado da oficina • Lucro peças/produtos: R$ ${(typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(o) : 0).toFixed(2)}`
-                            };
-                        });
+                    return normalizeBankTransactions([...synced, ...manual]);
                 });
             }, [orders]);
 
@@ -3260,7 +3341,7 @@
                     .filter(t => t.date && t.date.slice(0,7) === selectedMonth)
                     .filter(t => filterArea === 'todos' || t.area === filterArea)
                     .filter(t => filterType === 'todos' || t.type === filterType)
-                    .filter(t => `${t.description} ${t.category} ${t.obs||''}`.toLowerCase().includes(q))
+                    .filter(t => `${t.description} ${t.category} ${t.paymentLabel || ''} ${t.obs||''}`.toLowerCase().includes(q))
                     .sort((a,b) => b.date.localeCompare(a.date));
             }, [transactions, selectedMonth, filterArea, filterType, search]);
 
@@ -5415,6 +5496,7 @@
                                 {filteredTransactions.map(t => {
                                     const isPE = t.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(t.category);
                                     const catIcon = CAT_ICONS[t.category] || 'circle-dot';
+                                    const displayChip = t.syncSource === 'office' && t.paymentLabel ? t.paymentLabel : t.category;
                                     return (
                                         <div key={t.id} className="os-card p-3 rounded-xl border border-white/5">
                                             <div className="flex items-start gap-3">
@@ -5426,7 +5508,7 @@
                                                     <div className="flex flex-wrap items-center gap-1 mb-1">
                                                         <TypeBadge type={t.type} />
                                                         <AreaBadge area={t.area} size="xs" />
-                                                        <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{t.category}</span>
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{displayChip}</span>
                                                         {isPE && t.area==='oficina' && (
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold border" style={{color:'#a855f7',background:'rgba(168,85,247,0.1)',borderColor:'rgba(168,85,247,0.3)'}}>PESSOAL</span>
                                                         )}
@@ -5437,7 +5519,13 @@
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold border text-emerald-400 bg-emerald-500/10 border-emerald-500/30">FIXA</span>
                                                         )}
                                                     </div>
-                                                    <p className="text-sm font-semibold text-white truncate">{t.description}</p>
+                                                    <p className="text-sm font-semibold text-white truncate">{(() => {
+                                                        if (t.syncSource === 'office') {
+                                                            const match = String(t.description || '').match(/OS\s*#?\s*([\w-]+)/i);
+                                                            return match ? `OS #${match[1]}` : (t.description || 'OS');
+                                                        }
+                                                        return t.description;
+                                                    })()}</p>
                                                     <p className="text-[10px] text-gray-500 mt-0.5">{t.date?.split('-').reverse().join('/')} {t.obs?`• ${t.obs}`:''}</p>
                                                 </div>
                                                 <div className="text-right flex-shrink-0">
@@ -10067,7 +10155,11 @@
                 discountType: 'none',
                 discountValue: '',
                 paymentMethod: 'PIX',
-                paymentInstallments: 1
+                paymentInstallments: 1,
+                hasAdvancePayment: false,
+                advancePaymentValue: '',
+                advancePaymentDate: '',
+                advancePaymentMethod: 'PIX'
             });
 
             // IMPORTANTE: não mantenha cópia local do catálogo, senão o select fica desatualizado
@@ -10077,6 +10169,9 @@
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
             const [customerInternalNote, setCustomerInternalNote] = useState('');
+            const [showCustomerHistoryPanel, setShowCustomerHistoryPanel] = useState(false);
+            const [showCustomerProfilePanel, setShowCustomerProfilePanel] = useState(false);
+            const [showCustomerInternalNotePanel, setShowCustomerInternalNotePanel] = useState(false);
 // Geração automática do número da OS (apenas para OS NOVA)
             useEffect(() => {
                 if (order) return; // edição: mantém o número existente
@@ -10112,6 +10207,10 @@
 
             const customerOperationalProfile = useMemo(() => (
                 getCustomerOperationalProfile(state.orders || [], formData.customerName, formData.id)
+            ), [state.orders, formData.customerName, formData.id]);
+
+            const customerEquipmentHistoryGroups = useMemo(() => (
+                getCustomerEquipmentHistoryGroups(state.orders || [], formData.customerName, formData.id)
             ), [state.orders, formData.customerName, formData.id]);
 
             const latestCustomerOrder = useMemo(() => (
@@ -10197,7 +10296,7 @@
                     }
 
                     const unitPrice = parseFloat(item.price) || 0;
-                    const itemCostUnit = (item.type === 'part' || item.type === 'product') ? (parseFloat(item.costPrice || item.costUnitPrice || item.purchasePrice || 0) || 0) : 0;
+                    const itemCostUnit = (item.type === 'part' || item.type === 'product') ? (parseFloat(item.costPrice || item.costUnitPrice || 0) || 0) : 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         catalogId: item.id,
@@ -10238,29 +10337,61 @@ const handleAddManual = useCallback(() => {
             showToast("⚠️ Preencha todos os campos", "warning");
             return;
         }
+
         const quantity = parseInt(temp.quantity) || 1;
-        if (quantity <= 0) { showToast("⚠️ Quantidade deve ser maior que zero", "warning"); return; }
+        if (quantity <= 0) {
+            showToast("⚠️ Quantidade deve ser maior que zero", "warning");
+            return;
+        }
+
         const unitPrice = parseFloat(temp.price);
-        if (isNaN(unitPrice) || unitPrice < 0) { showToast("⚠️ Valor de venda inválido", "warning"); return; }
-        const hasCostControl = type === 'part' || type === 'product';
-        const costUnitPrice = hasCostControl ? (parseFloat(temp.costPrice || 0) || 0) : 0;
-        if (hasCostControl && costUnitPrice < 0) { showToast("⚠️ Custo inválido", "warning"); return; }
+        if (isNaN(unitPrice) || unitPrice < 0) {
+            showToast("⚠️ Preço inválido", "warning");
+            return;
+        }
+
         const totalPrice = unitPrice * quantity;
+        const hasCostControl = type === 'part' || type === 'product';
+        const costUnitPrice = hasCostControl ? (parseFloat(temp.costPrice) || 0) : 0;
         const costTotal = costUnitPrice * quantity;
         const profitTotal = hasCostControl ? Math.max(0, totalPrice - costTotal) : 0;
-        const item = { id: Date.now() + Math.random(), name: temp.name.toUpperCase(), quantity, unitPrice, price: totalPrice, type, costUnitPrice, costPrice: costUnitPrice, costTotal, profitTotal };
+
+        const item = {
+            id: Date.now() + Math.random(),
+            name: temp.name.toUpperCase(),
+            quantity: quantity,
+            unitPrice: unitPrice,
+            price: totalPrice,
+            type: type,
+            costUnitPrice,
+            costPrice: costTotal,
+            costTotal,
+            profitTotal
+        };
+
         setFormData(prev => {
-            if (type === 'service') return { ...prev, services: [...prev.services, item] };
-            if (type === 'part') return { ...prev, parts: [...prev.parts, item] };
-            if (type === 'product') return { ...prev, products: [...prev.products, item] };
+            if (type === 'service') {
+                return { ...prev, services: [...prev.services, item] };
+            } else if (type === 'part') {
+                return { ...prev, parts: [...prev.parts, item] };
+            } else if (type === 'product') {
+                return { ...prev, products: [...prev.products, item] };
+            }
             return prev;
         });
-        dispatch({ type: 'SAVE_CATALOG_ITEM', item: { name: temp.name.toUpperCase(), price: unitPrice, type, costPrice: costUnitPrice } });
+
+        dispatch({
+            type: 'SAVE_CATALOG_ITEM',
+            item: { name: temp.name.toUpperCase(), price: unitPrice, type, costPrice: costUnitPrice }
+        });
+
         setTemp({ name: '', quantity: '', price: '', costPrice: '' });
         setSelectedCatalogId('');
-        setIsDirty(true);
-        showToast(hasCostControl ? `✅ Item adicionado • Lucro R$ ${profitTotal.toFixed(2)}` : "✅ Item adicionado", "success");
-    } catch (err) { console.error(err); showToast("❌ Erro ao adicionar item", "error"); }
+        showToast("✅ Item adicionado", "success");
+    } catch (err) {
+        console.error(err);
+        showToast("❌ Erro ao adicionar item", "error");
+    }
 }, [temp, type, dispatch]);
 
 
@@ -10338,8 +10469,13 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                     const nextPaymentDate = formData.paymentStatus === 'PAGO'
                         ? (formData.paymentDate || previousOrder?.paymentDate || new Date().toISOString().slice(0,10))
                         : '';
+                    const normalizedAdvanceValue = calculateAdvancePayment(formData);
                     let savedOrder = {
                         ...formData,
+                        hasAdvancePayment: normalizedAdvanceValue > 0,
+                        advancePaymentValue: normalizedAdvanceValue > 0 ? normalizedAdvanceValue : '',
+                        advancePaymentDate: normalizedAdvanceValue > 0 ? (formData.advancePaymentDate || previousOrder?.advancePaymentDate || new Date().toISOString().slice(0,10)) : '',
+                        advancePaymentMethod: formData.advancePaymentMethod || formData.paymentMethod || 'PIX',
                         operationalStatus: formData.operationalStatus || 'ENTRADA',
                         paymentDate: nextPaymentDate
                     };
@@ -10362,12 +10498,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
             const subtotal = calculateSubtotal(formData);
             const discount = calculateDiscount(formData);
             const total = calculateTotal(formData);
-            const itemCostTotal = calculateOrderCost(formData);
-            const itemGrossProfit = calculateOrderGrossItemProfit(formData);
-            const itemNetMargin = calculateOrderNetMargin(formData);
-            const itemMarginPercent = (formData.parts.length + formData.products.length) > 0 && (itemCostTotal + itemGrossProfit) > 0
-                ? Math.round((itemGrossProfit / (itemCostTotal + itemGrossProfit)) * 100)
-                : 0;
+            const advancePayment = calculateAdvancePayment(formData);
+            const remainingPayment = calculateRemainingPayment(formData);
+            const partsProfit = calculatePartsProfit(formData);
 
             return (
                 <div className="space-y-6 pb-10 animate-fadeIn">
@@ -10409,73 +10542,116 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                     {customerHistory.hasHistory && (
                         <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
-                            <p className="text-[10px] font-usarmy text-[#d4af37] text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
-
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-usarmy text-[#d4af37]">CENTRAL DO CLIENTE</p>
+                                    <p className="text-[11px] text-gray-500 truncate">
+                                        Cliente com {customerHistory.totalOrders} OS anteriores • {customerEquipmentHistoryGroups.length} equipamentos cadastrados
+                                    </p>
+                                </div>
                                 <button
                                     type="button"
                                     onClick={handlePullCustomerData}
-                                    className="gold-gradient p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2"
+                                    className="text-[8px] font-usarmy text-black bg-[#d4af37] px-3 py-2 rounded-lg whitespace-nowrap"
                                 >
-                                    <i data-lucide="user-plus" className="w-4 h-4"></i>
                                     PUXAR DADOS
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCustomerHistoryPanel(prev => !prev)}
+                                    className={`p-3 rounded-xl border text-[9px] font-usarmy flex flex-col items-center gap-1 ${showCustomerHistoryPanel ? 'border-[#d4af37] text-[#d4af37] bg-[#d4af37]/10' : 'border-white/10 text-gray-400 bg-black/20'}`}
+                                >
+                                    <i data-lucide="history" className="w-4 h-4"></i>
+                                    HISTÓRICO
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => onOpenEquipmentHistory?.()}
-                                    className="p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border border-[#d4af37]/20 text-[#d4af37] bg-black/20"
+                                    onClick={() => setShowCustomerProfilePanel(prev => !prev)}
+                                    className={`p-3 rounded-xl border text-[9px] font-usarmy flex flex-col items-center gap-1 ${showCustomerProfilePanel ? 'border-[#d4af37] text-[#d4af37] bg-[#d4af37]/10' : 'border-white/10 text-gray-400 bg-black/20'}`}
                                 >
-                                    <i data-lucide="database" className="w-4 h-4"></i>
-                                    HIST. EQUIP.
+                                    <i data-lucide="user-check" className="w-4 h-4"></i>
+                                    PERFIL
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCustomerInternalNotePanel(prev => !prev)}
+                                    className={`p-3 rounded-xl border text-[9px] font-usarmy flex flex-col items-center gap-1 ${showCustomerInternalNotePanel ? 'border-[#d4af37] text-[#d4af37] bg-[#d4af37]/10' : 'border-white/10 text-gray-400 bg-black/20'}`}
+                                >
+                                    <i data-lucide="lock" className="w-4 h-4"></i>
+                                    NOTAS
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
-                                    <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
-                                    <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
-                                    <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
-                                    <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastDefect || '—'}</p>
-                                </div>
+                            <div className="bg-black/20 rounded-xl p-3 border border-white/5">
+                                <p className="text-[9px] text-gray-400 leading-relaxed">
+                                    {customerOperationalProfile
+                                        ? `${customerOperationalProfile.recurrenceLabel} • ${customerOperationalProfile.favoritePlatform} • último atendimento ${customerOperationalProfile.daysSinceLastOrder === null ? 'sem data' : `${customerOperationalProfile.daysSinceLastOrder} dias atrás`}`
+                                        : `${customerHistory.totalOrders} OS anteriores cadastradas`}
+                                </p>
                             </div>
 
-                            {customerHistory.lastOrders.length > 0 && (
-                                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-2">ÚLTIMAS MOVIMENTAÇÕES</p>
+                            {showCustomerHistoryPanel && (
+                                <div className="space-y-3 animate-fadeIn">
+                                    <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+                                        <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO DO CLIENTE POR EQUIPAMENTO</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenEquipmentHistory?.()}
+                                            className="text-[8px] font-usarmy text-[#d4af37] border border-[#d4af37]/20 px-3 py-2 rounded-lg bg-[#d4af37]/5"
+                                        >
+                                            ABRIR BANCO
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
+                                            <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
+                                            <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
+                                            <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
+                                            <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-2">
-                                        {customerHistory.lastOrders.map((historyOrder) => (
-                                            <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px]">
-                                                <div className="min-w-0">
-                                                    <p className="text-white truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
-                                                    <p className="text-gray-500 truncate">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
+                                        {customerEquipmentHistoryGroups.map(group => (
+                                            <details key={group.equipment} className="bg-black/20 rounded-lg border border-white/5 overflow-hidden">
+                                                <summary className="p-3 cursor-pointer flex items-center justify-between gap-3 text-[10px]">
+                                                    <span className="text-white font-bold truncate">{group.equipment}</span>
+                                                    <span className="text-[#d4af37] font-usarmy text-[8px] whitespace-nowrap">{group.items.length} OS</span>
+                                                </summary>
+                                                <div className="px-3 pb-3 space-y-2">
+                                                    {group.items.map(historyOrder => (
+                                                        <div key={historyOrder.id} className="rounded-lg bg-black/25 border border-white/5 p-3 text-[9px]">
+                                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                                <p className="text-white font-bold">OS #{historyOrder.osNumber || '-'}</p>
+                                                                <p className="text-[#d4af37] font-bold">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
+                                                            </div>
+                                                            <p className="text-gray-500">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
+                                                            {historyOrder.defects && <p className="text-gray-400 mt-1">Defeito: {historyOrder.defects}</p>}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
-                                            </div>
+                                            </details>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {customerOperationalProfile && (
-                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3">
+                            {showCustomerProfilePanel && customerOperationalProfile && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3 animate-fadeIn">
                                     <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">PERFIL OPERACIONAL DO CLIENTE</p>
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -10502,20 +10678,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         <p className="text-[10px] text-white leading-tight">{customerOperationalProfile.lastSolution || '—'}</p>
                                     </div>
 
-                                    {customerOperationalProfile.recurringEquipment.length > 0 && (
-                                        <div className="bg-black/20 rounded-lg p-3 border border-white/5">
-                                            <p className="text-[8px] text-gray-500 mb-2">EQUIPAMENTOS RECORRENTES</p>
-                                            <div className="space-y-2">
-                                                {customerOperationalProfile.recurringEquipment.map((item, index) => (
-                                                    <div key={`${item.name}_${index}`} className="flex items-center justify-between gap-3 text-[9px]">
-                                                        <p className="text-white truncate flex-1">{item.name}</p>
-                                                        <span className="text-[#d4af37] font-bold whitespace-nowrap">{item.count}x</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
                                     {customerOperationalProfile.attentionTags.length > 0 && (
                                         <div className="space-y-2">
                                             <p className="text-[8px] text-gray-500">ALERTAS DE ATENÇÃO</p>
@@ -10531,18 +10693,20 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 </div>
                             )}
 
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
-                                    <span className="text-[8px] text-gray-600">uso interno</span>
+                            {showCustomerInternalNotePanel && (
+                                <div className="space-y-2 animate-fadeIn">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
+                                        <span className="text-[8px] text-gray-600">uso interno</span>
+                                    </div>
+                                    <textarea
+                                        className="w-full p-3 rounded-xl h-20 resize-none text-sm"
+                                        placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
+                                        value={customerInternalNote}
+                                        onChange={e => setCustomerInternalNote(e.target.value)}
+                                    />
                                 </div>
-                                <textarea
-                                    className="w-full p-3 rounded-xl h-20 resize-none text-sm"
-                                    placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
-                                    value={customerInternalNote}
-                                    onChange={e => setCustomerInternalNote(e.target.value)}
-                                />
-                            </div>
+                            )}
                         </div>
                     )}
 
@@ -10712,19 +10876,55 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     value={temp.name} 
                                     onChange={e => setTemp({...temp, name: e.target.value})} 
                                 />
-                                <div className="os-manual-grid">
-                                    <input type="number" min="1" className="w-full p-3 text-sm rounded-lg" placeholder="Qtde" autoComplete="off" value={temp.quantity} onChange={e => setTemp({...temp, quantity: e.target.value})} />
-                                    <input type="number" step="0.01" min="0" className="w-full p-3 text-sm rounded-lg" placeholder="R$ Venda" autoComplete="off" value={temp.price} onChange={e => setTemp({...temp, price: e.target.value})} />
-                                    <input type="number" step="0.01" min="0" className="w-full p-3 text-sm rounded-lg" placeholder="Custo" autoComplete="off" value={type === 'service' ? '' : temp.costPrice} disabled={type === 'service'} onChange={e => setTemp({...temp, costPrice: e.target.value})} />
+                                <div className={(type === 'part' || type === 'product') ? "grid grid-cols-[0.72fr_1fr_1fr] gap-2" : "grid grid-cols-[0.72fr_1fr] gap-2"}>
+                                    <input 
+                                        type="number"
+                                        min="1"
+                                        className="w-full p-3 text-sm rounded-lg" 
+                                        placeholder="Qtde" 
+                                        autoComplete="off"
+                                        value={temp.quantity} 
+                                        onChange={e => setTemp({...temp, quantity: e.target.value})} 
+                                    />
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        min="0"
+                                        className="w-full p-3 text-sm rounded-lg" 
+                                        placeholder="Venda" 
+                                        autoComplete="off"
+                                        value={temp.price} 
+                                        onChange={e => setTemp({...temp, price: e.target.value})} 
+                                    />
+                                    {(type === 'part' || type === 'product') && (
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="w-full p-3 text-sm rounded-lg"
+                                            placeholder="Custo"
+                                            autoComplete="off"
+                                            value={temp.costPrice}
+                                            onChange={e => setTemp({...temp, costPrice: e.target.value})}
+                                        />
+                                    )}
                                 </div>
-                                {(type === 'part' || type === 'product') && temp.price && temp.quantity && (
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <div className="bg-black/30 rounded-xl p-3 border border-white/5"><p className="text-[8px] text-gray-500 font-usarmy">VENDA</p><p className="text-xs text-[#d4af37] font-bold">R$ {((parseFloat(temp.price) || 0) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
-                                        <div className="cost-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">CUSTO</p><p className="text-xs text-red-300 font-bold">R$ {((parseFloat(temp.costPrice) || 0) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
-                                        <div className="profit-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p><p className="text-xs text-green-400 font-bold">R$ {Math.max(0, ((parseFloat(temp.price) || 0) - (parseFloat(temp.costPrice) || 0)) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
+                                {(type === 'part' || type === 'product') && temp.price && temp.costPrice && (
+                                    <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2 flex items-center justify-between">
+                                        <span className="text-[9px] font-usarmy text-gray-500">LUCRO ESTIMADO</span>
+                                        <span className="text-xs font-bold text-green-400">
+                                            R$ {Math.max(0, ((parseFloat(temp.price) || 0) - (parseFloat(temp.costPrice) || 0)) * (parseInt(temp.quantity) || 1)).toFixed(2)}
+                                        </span>
                                     </div>
                                 )}
-                                <button type="button" onClick={handleAddManual} className="gold-gradient os-add-item-btn font-usarmy text-xs"><span className="text-lg leading-none">+</span><span>ADICIONAR ITEM AO ORÇAMENTO</span></button>
+                                <button
+                                    type="button"
+                                    onClick={handleAddManual}
+                                    className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2 min-h-[50px] shadow-lg shadow-yellow-900/10 active:scale-[0.98]"
+                                >
+                                    <span className="text-lg leading-none">+</span>
+                                    <span>ADICIONAR ITEM AO ORÇAMENTO</span>
+                                </button>
                             </div>
                         </div>
 
@@ -10772,7 +10972,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
                                         )}
-                                        <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1"><span>Venda: R$ {parseFloat(item.price || 0).toFixed(2)}</span><span>Custo: R$ {getItemCostTotal(item).toFixed(2)}</span><span className="text-green-400">Lucro: R$ {Math.max(0, (parseFloat(item.price || 0) || 0) - getItemCostTotal(item)).toFixed(2)}</span></div>
+                                        {Number(item.profitTotal || 0) > 0 && (
+                                            <p className="text-[10px] text-green-400 mt-1">Lucro peça: R$ {Number(item.profitTotal || 0).toFixed(2)}</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-[#d4af37] font-bold">
@@ -10801,7 +11003,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
                                         )}
-                                        <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1"><span>Venda: R$ {parseFloat(item.price || 0).toFixed(2)}</span><span>Custo: R$ {getItemCostTotal(item).toFixed(2)}</span><span className="text-green-400">Lucro: R$ {Math.max(0, (parseFloat(item.price || 0) || 0) - getItemCostTotal(item)).toFixed(2)}</span></div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-[#d4af37] font-bold">
@@ -10821,18 +11022,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 <p className="text-center text-gray-600 text-xs py-6">Nenhum item adicionado</p>
                             )}
                         </div>
-
-                        {(formData.parts.length > 0 || formData.products.length > 0) && (
-                            <div className="os-card p-4 rounded-xl border border-green-500/20 bg-green-500/5">
-                                <div className="flex items-center gap-2 mb-3"><i data-lucide="chart-no-axes-combined" className="w-4 h-4 text-green-400"></i><p className="text-[10px] font-usarmy text-green-400">MARGEM DE PEÇAS / PRODUTOS</p></div>
-                                <div className="grid grid-cols-3 gap-2 text-center">
-                                    <div className="bg-black/30 rounded-xl p-3 border border-white/5"><p className="text-[8px] text-gray-500 font-usarmy">CUSTO</p><p className="text-xs text-red-300 font-bold">R$ {itemCostTotal.toFixed(2)}</p></div>
-                                    <div className="profit-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p><p className="text-xs text-green-400 font-bold">R$ {itemGrossProfit.toFixed(2)}</p></div>
-                                    <div className="bg-black/30 rounded-xl p-3 border border-[#d4af37]/20"><p className="text-[8px] text-gray-500 font-usarmy">MARGEM</p><p className="text-xs text-[#d4af37] font-bold">{itemMarginPercent}%</p></div>
-                                </div>
-                                {discount > 0 && (<p className="text-[10px] text-gray-500 mt-3">Lucro líquido após desconto estimado: <span className="text-green-400 font-bold">R$ {itemNetMargin.toFixed(2)}</span></p>)}
-                            </div>
-                        )}
 
                         <div className="border-t-2 border-[#d4af37]/30 pt-4 space-y-4">
                             <div className="flex items-center gap-2 mb-2">
@@ -10883,6 +11072,56 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="border-t border-white/5 pt-4 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <i data-lucide="hand-coins" className="w-4 h-4 text-[#d4af37]"></i>
+                                        <p className="text-[10px] font-usarmy text-[#d4af37]">SINAL / ENTRADA</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateForm({
+                                            hasAdvancePayment: !formData.hasAdvancePayment,
+                                            advancePaymentValue: !formData.hasAdvancePayment ? (formData.advancePaymentValue || '') : '',
+                                            advancePaymentDate: !formData.hasAdvancePayment ? (formData.advancePaymentDate || new Date().toISOString().slice(0,10)) : ''
+                                        })}
+                                        className={`px-3 py-2 rounded-lg text-[9px] font-usarmy border ${formData.hasAdvancePayment ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-500'}`}
+                                    >
+                                        {formData.hasAdvancePayment ? 'COM SINAL' : 'SEM SINAL'}
+                                    </button>
+                                </div>
+
+                                {formData.hasAdvancePayment && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            max={total}
+                                            className="w-full p-4 rounded-xl text-center font-bold"
+                                            placeholder="Valor do sinal"
+                                            value={formData.advancePaymentValue || ''}
+                                            onChange={e => updateForm({ advancePaymentValue: e.target.value })}
+                                        />
+                                        <input
+                                            type="date"
+                                            className="w-full p-4 rounded-xl text-sm"
+                                            value={formData.advancePaymentDate || new Date().toISOString().slice(0,10)}
+                                            onChange={e => updateForm({ advancePaymentDate: e.target.value })}
+                                        />
+                                        <select
+                                            className="col-span-2 w-full p-4 rounded-xl text-sm"
+                                            value={formData.advancePaymentMethod || formData.paymentMethod || 'PIX'}
+                                            onChange={e => updateForm({ advancePaymentMethod: e.target.value })}
+                                        >
+                                            {PAYMENT_METHOD_OPTIONS.map(option => (
+                                                <option key={option.key} value={option.key}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="flex items-center gap-2 mb-2">
                                 <i data-lucide="tag" className="w-4 h-4 text-[#d4af37]"></i>
@@ -10960,8 +11199,17 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 )}
 
-                                {(formData.parts.length > 0 || formData.products.length > 0) && (
-                                    <div className="flex justify-between items-center text-sm"><span className="text-green-400">Lucro peças/produtos:</span><span className="text-green-400 font-bold">R$ {itemGrossProfit.toFixed(2)}</span></div>
+                                {advancePayment > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-green-400">Sinal pago:</span>
+                                        <span className="text-green-400 font-bold">R$ {advancePayment.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                {partsProfit > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-green-400">Lucro em peças:</span>
+                                        <span className="text-green-400 font-bold">R$ {partsProfit.toFixed(2)}</span>
+                                    </div>
                                 )}
 
                                 <div className="pt-3 border-t border-[#d4af37]/30 space-y-2">
@@ -10969,6 +11217,24 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         <span className="font-usarmy text-[#d4af37] text-lg leading-none">TOTAL</span>
                                         <span className="font-usarmy text-[#d4af37] text-2xl leading-none text-right">R$ {total.toFixed(2)}</span>
                                     </div>
+                                    {advancePayment > 0 && formData.paymentStatus !== 'PAGO' && (
+                                        <div className="flex justify-between text-[11px] text-gray-400">
+                                            <span>Restante a receber:</span>
+                                            <span className="text-white font-bold">R$ {remainingPayment.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    {advancePayment > 0 && formData.paymentStatus === 'PAGO' && (
+                                        <div className="flex justify-between text-[11px] text-green-400">
+                                            <span>Restante quitado:</span>
+                                            <span className="font-bold">R$ {remainingPayment.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    {advancePayment <= 0 && formData.paymentStatus === 'PAGO' && (
+                                        <div className="flex justify-between text-[11px] text-green-400">
+                                            <span>✅ Pago à vista</span>
+                                            <span className="font-bold">R$ {total.toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <div className="text-[11px] text-gray-400 leading-relaxed">
                                         <span className="text-gray-500">Pagamento:</span>{' '}
                                         <span className="text-gray-300">{getPaymentMethodLabel(formData.paymentMethod)}</span>
@@ -10999,6 +11265,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
             const subtotal = calculateSubtotal(order);
             const discount = calculateDiscount(order);
             const total = calculateTotal(order);
+            const advancePayment = calculateAdvancePayment(order);
+            const remainingPayment = calculateRemainingPayment(order);
+            const paymentFlow = getOrderPaymentFlow(order);
             const statusConfig = STATUS_CONFIG[order.status] || STATUS_CONFIG.ABERTA;
 
             const formatWhatsAppNumber = (phone) => {
@@ -11049,8 +11318,9 @@ Manutenção tática especializada`;
 📞 Telefone: ${order.customerPhone}
 🔫 Equipamento: ${order.equipment}
 📊 Status: ${statusConfig.label}
-💳 Pagamento: ${order.paymentStatus === 'PAGO' ? '✅ PAGO' : '⏳ PENDENTE'}
+💳 Pagamento: ${paymentFlow.label}
 💰 Meio: ${getPaymentSummaryText(order)}
+${advancePayment > 0 ? `🟡 Sinal pago: R$ ${advancePayment.toFixed(2)}${order.paymentStatus === 'PAGO' ? `\n✅ Restante quitado: R$ ${remainingPayment.toFixed(2)}` : `\n⏳ Restante a receber: R$ ${remainingPayment.toFixed(2)}`}` : (order.paymentStatus === 'PAGO' ? `✅ Pago à vista: R$ ${total.toFixed(2)}` : '')}
 
 ⚠️ DEFEITO RELATADO:
 ${order.defects || 'Não informado'}
@@ -11095,6 +11365,34 @@ Alcantara Armeiro - Airsoft Repairs
                                 </span>
                                 <p className="text-[10px] text-gray-600 mt-2">{order.date}</p>
                             </div>
+                        </div>
+
+                        <div className="mb-4 p-4 rounded-lg border border-white/5 bg-black/20 space-y-2">
+                            <p className="text-[10px] font-usarmy text-gray-500">CONTROLE DE PAGAMENTO</p>
+                            {advancePayment <= 0 && order.paymentStatus === 'PAGO' && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-green-400">✅ Pago à vista</span>
+                                    <span className="text-green-400 font-bold">R$ {total.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {advancePayment > 0 && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-yellow-400">🟡 Sinal recebido</span>
+                                    <span className="text-yellow-400 font-bold">R$ {advancePayment.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {advancePayment > 0 && order.paymentStatus === 'PAGO' && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-green-400">✅ Restante quitado</span>
+                                    <span className="text-green-400 font-bold">R$ {remainingPayment.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {advancePayment > 0 && order.paymentStatus !== 'PAGO' && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-gray-400">Restante a receber</span>
+                                    <span className="text-white font-bold">R$ {remainingPayment.toFixed(2)}</span>
+                                </div>
+                            )}
                         </div>
 
                         {order.defects && (
@@ -11301,8 +11599,13 @@ Alcantara Armeiro - Airsoft Repairs
                 }
 
                 const price = parseFloat(newItem.price);
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
+                    return;
+                }
+
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
                     return;
                 }
 
@@ -11563,6 +11866,7 @@ Alcantara Armeiro - Airsoft Repairs
             const products = state.products;
             const [newProduct, setNewProduct] = useState({ 
                 name: '', 
+                costPrice: '',
                 price: '', 
                 stock: '', 
                 category: 'Assessório',
@@ -11577,13 +11881,18 @@ Alcantara Armeiro - Airsoft Repairs
                 }
 
                 const price = parseFloat(newProduct.price);
+                const costPrice = parseFloat(newProduct.costPrice || 0) || 0;
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
+                    return;
+                }
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
                     return;
                 }
 
-                dispatch({ type: 'SAVE_PRODUCT', product: { ...newProduct, price, stock: parseInt(newProduct.stock) || 0 } });
-                setNewProduct({ name: '', price: '', stock: '', category: 'Assessório', description: '' });
+                dispatch({ type: 'SAVE_PRODUCT', product: { ...newProduct, price, costPrice, stock: parseInt(newProduct.stock) || 0 } });
+                setNewProduct({ name: '', costPrice: '', price: '', stock: '', category: 'Assessório', description: '' });
                 showToast("✅ Produto cadastrado!", "success");
             };
 
@@ -11646,17 +11955,19 @@ Alcantara Armeiro - Airsoft Repairs
                                 step="0.01"
                                 min="0"
                                 className="w-full p-3 rounded-lg text-sm" 
-                                placeholder="Preço R$ *" 
+                                placeholder="Compra R$" 
+                                value={newProduct.costPrice} 
+                                onChange={e => setNewProduct({...newProduct, costPrice: e.target.value})} 
+                            />
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                min="0"
+                                className="w-full p-3 rounded-lg text-sm" 
+                                placeholder="Venda R$ *" 
                                 value={newProduct.price} 
                                 onChange={e => setNewProduct({...newProduct, price: e.target.value})} 
                             />
-                            <button 
-                                onClick={handleAdd} 
-                                className="gold-gradient p-3 rounded-lg font-usarmy text-sm flex items-center justify-center gap-2"
-                            >
-                                <i data-lucide="save" className="w-4 h-4"></i>
-                                CADASTRAR
-                            </button>
                         </div>
 
                         <textarea 
@@ -11665,6 +11976,14 @@ Alcantara Armeiro - Airsoft Repairs
                             value={newProduct.description} 
                             onChange={e => setNewProduct({...newProduct, description: e.target.value})} 
                         />
+
+                        <button 
+                            onClick={handleAdd} 
+                            className="gold-gradient w-full p-4 rounded-xl font-usarmy text-sm flex items-center justify-center gap-2"
+                        >
+                            <i data-lucide="save" className="w-4 h-4"></i>
+                            CADASTRAR PRODUTO
+                        </button>
                     </div>
 
                     <div className="space-y-3">
@@ -11716,11 +12035,20 @@ Alcantara Armeiro - Airsoft Repairs
                                             <i data-lucide="trash-2" className="w-4 h-4"></i>
                                         </button>
                                     </div>
-                                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                                        <span className="text-[#d4af37] font-usarmy text-lg">
-                                            R$ {parseFloat(product.price).toFixed(2)}
-                                        </span>
-                                        <span className={`text-xs font-bold px-2 py-1 rounded ${product.stock > 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center">
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">COMPRA</p>
+                                            <p className="text-xs text-red-400 font-bold">R$ {(parseFloat(product.costPrice || 0) || 0).toFixed(2)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">VENDA</p>
+                                            <p className="text-xs text-[#d4af37] font-bold">R$ {(parseFloat(product.price || 0) || 0).toFixed(2)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p>
+                                            <p className="text-xs text-green-400 font-bold">R$ {Math.max(0, (parseFloat(product.price || 0) || 0) - (parseFloat(product.costPrice || 0) || 0)).toFixed(2)}</p>
+                                        </div>
+                                        <span className={`col-span-3 text-xs font-bold px-2 py-1 rounded ${product.stock > 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
                                             Est: {product.stock || 0}
                                         </span>
                                     </div>
@@ -11742,16 +12070,23 @@ Alcantara Armeiro - Airsoft Repairs
 
         const EditProductModal = ({ product, onSave, onClose }) => {
             const [editData, setEditData] = useState({
+                costPrice: product.costPrice !== undefined && product.costPrice !== null ? product.costPrice.toString() : '0',
                 price: product.price ? product.price.toString() : '0',
                 stock: product.stock !== undefined && product.stock !== null ? product.stock.toString() : '0'
             });
 
             const handleSave = () => {
+                const costPrice = parseFloat(editData.costPrice || 0) || 0;
                 const price = parseFloat(editData.price);
                 const stock = parseInt(editData.stock);
 
+                if (costPrice < 0) {
+                    showToast("⚠️ Valor de compra inválido", "warning");
+                    return;
+                }
+
                 if (isNaN(price) || price < 0) {
-                    showToast("⚠️ Preço inválido", "warning");
+                    showToast("⚠️ Valor de venda inválido", "warning");
                     return;
                 }
 
@@ -11762,6 +12097,7 @@ Alcantara Armeiro - Airsoft Repairs
 
                 const updatedProduct = {
                     ...product,
+                    costPrice: costPrice,
                     price: price,
                     stock: stock
                 };
@@ -11777,7 +12113,20 @@ Alcantara Armeiro - Airsoft Repairs
 
                         <div className="space-y-4 mb-6">
                             <div>
-                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">PREÇO (R$)</label>
+                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">VALOR DE COMPRA (R$)</label>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    min="0"
+                                    className="w-full p-4 rounded-xl text-lg font-bold text-center"
+                                    value={editData.costPrice}
+                                    onChange={e => setEditData({...editData, costPrice: e.target.value})}
+                                    placeholder="0.00"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">VALOR DE VENDA (R$)</label>
                                 <input 
                                     type="number" 
                                     step="0.01"
