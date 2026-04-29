@@ -1085,7 +1085,8 @@
                     if (!pExists) {
                         products.push({ ...action.product, id: Date.now().toString(),
                             stock: parseInt(action.product.stock) || 0,
-                            price: parseFloat(action.product.price) || 0 });
+                            price: parseFloat(action.product.price) || 0,
+                            costPrice: parseFloat(action.product.costPrice || action.product.purchasePrice || 0) || 0 });
                         SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                         return { ...state, products };
                     }
@@ -1403,7 +1404,8 @@
                     products[idx] = {
                         ...updatedProduct,
                         stock: parseInt(updatedProduct.stock) || 0,
-                        price: parseFloat(updatedProduct.price) || 0
+                        price: parseFloat(updatedProduct.price) || 0,
+                        costPrice: parseFloat(updatedProduct.costPrice || updatedProduct.purchasePrice || 0) || 0
                     };
                     SafeStorage.setItem('alcantara_products', JSON.stringify(products));
                 }
@@ -1558,6 +1560,60 @@
             const subtotal = calculateSubtotal(order);
             const discount = calculateDiscount(order);
             return Math.max(0, subtotal - discount);
+        };
+
+        const calculateAdvancePayment = (order) => {
+            const enabled = order?.hasAdvancePayment === true || Number(order?.advancePaymentValue || 0) > 0;
+            if (!enabled) return 0;
+            const total = calculateTotal(order || {});
+            const advance = parseFloat(order?.advancePaymentValue) || 0;
+            return Math.min(Math.max(0, advance), total);
+        };
+
+        const calculateRemainingPayment = (order) => {
+            const total = calculateTotal(order || {});
+            const advance = calculateAdvancePayment(order || {});
+            return Math.max(0, total - advance);
+        };
+
+        const getItemCostTotal = (item) => {
+            const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
+            if (item?.costTotal !== undefined) return parseFloat(item.costTotal) || 0;
+            if (item?.costUnitPrice !== undefined) return (parseFloat(item.costUnitPrice) || 0) * quantity;
+            if (item?.costPrice !== undefined) {
+                const rawCost = parseFloat(item.costPrice) || 0;
+                const sale = parseFloat(item.price) || 0;
+                return rawCost > sale && quantity > 1 ? rawCost : rawCost * quantity;
+            }
+            return 0;
+        };
+
+        const getItemProfitTotal = (item) => {
+            if (item?.profitTotal !== undefined) return parseFloat(item.profitTotal) || 0;
+            const sale = parseFloat(item?.price) || 0;
+            const cost = getItemCostTotal(item);
+            return Math.max(0, sale - cost);
+        };
+
+        const calculatePartsProductsCost = (order) => (
+            [...asArray(order?.parts), ...asArray(order?.products)]
+                .reduce((acc, item) => acc + getItemCostTotal(item), 0)
+        );
+
+        const calculatePartsProductsProfit = (order) => (
+            [...asArray(order?.parts), ...asArray(order?.products)]
+                .reduce((acc, item) => acc + getItemProfitTotal(item), 0)
+        );
+
+        const calculateOrderRealProfit = (order) => {
+            const servicesProfit = asArray(order?.services).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+            return servicesProfit + calculatePartsProductsProfit(order);
+        };
+
+        const calculateOrderRealMargin = (order) => {
+            const total = calculateTotal(order || {});
+            if (!total) return 0;
+            return (calculateOrderRealProfit(order) / total) * 100;
         };
 
         const PAYMENT_METHOD_OPTIONS = [
@@ -1781,33 +1837,6 @@
                 recurringEquipment,
                 attentionTags: attentionTags.slice(0, 4)
             };
-        };
-
-
-        const getCustomerEquipmentHistoryGroups = (orders, customerName, currentOrderId = null) => {
-            const key = normalizeCustomerKey(customerName);
-            if (!key) return [];
-
-            const relatedOrders = asArray(orders)
-                .filter(order => order && order.id !== currentOrderId && normalizeCustomerKey(order.customerName) === key)
-                .sort((a, b) => {
-                    const diff = parsePtBrDate(b.date) - parsePtBrDate(a.date);
-                    if (diff !== 0) return diff;
-                    const osA = parseInt(String(a.osNumber || '0').replace(/\D/g, ''), 10) || 0;
-                    const osB = parseInt(String(b.osNumber || '0').replace(/\D/g, ''), 10) || 0;
-                    return osB - osA;
-                });
-
-            const groups = {};
-            relatedOrders.forEach(order => {
-                const equipment = String(order.equipment || 'Equipamento não informado').trim() || 'Equipamento não informado';
-                if (!groups[equipment]) groups[equipment] = [];
-                groups[equipment].push(order);
-            });
-
-            return Object.entries(groups)
-                .map(([equipment, orders]) => ({ equipment, orders }))
-                .sort((a, b) => b.orders.length - a.orders.length || String(a.equipment).localeCompare(String(b.equipment)));
         };
 
 
@@ -2907,7 +2936,7 @@
             // substitui nós do DOM fora do ciclo do React e isso derruba a tela
             // nas atualizações de contas fixas (salvar / marcar / desmarcar).
 
-            // ── Sync OS payments → bank income ────────────────────────────────
+            // ── Sync paid orders → bank income ─────────────────────────────────
             useEffect(() => {
                 const toIsoFromPtBr = (value) => {
                     const raw = String(value || '').trim();
@@ -2917,64 +2946,54 @@
                     return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
                 };
 
-                const buildPaymentMethodText = (method) => getPaymentMethodLabel(method || 'PIX');
-                const calculateOrderAdvance = (order) => Number(order?.advancePaymentValue || order?.signalValue || order?.downPaymentValue || 0) || 0;
-                const getOrderClientName = (order) => String(order?.customerName || 'Cliente').trim() || 'Cliente';
-                const getOrderNumberText = (order) => String(order?.osNumber || '----').trim() || '----';
-
+                const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
                 setTransactions(prev => {
-                    const manual = prev.filter(t => t.syncSource !== 'office');
-                    const synced = [];
-
-                    (orders || []).forEach(order => {
-                        const baseId = String(order.id || order.osNumber || '').trim();
-                        if (!baseId) return;
-
-                        const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
-                        const advance = calculateOrderAdvance(order);
-                        const remaining = Math.max(0, total - advance);
+                    const next = [...prev];
+                    const existingSyncIds = new Set(next.filter(t => t.syncSource === 'office').map(t => t.syncId));
+                    paidOrders.forEach(order => {
+                        const syncId = String(order.id || order.osNumber);
+                        const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const realProfit = Number((typeof calculateOrderRealProfit === 'function' ? calculateOrderRealProfit(order) : total) || 0);
+                        const realCost = Math.max(0, total - realProfit);
                         const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
-                        const advanceDateIso = String(order.advancePaymentDate || '').trim() || orderDateIso;
                         const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
-                        const osNumber = getOrderNumberText(order);
-                        const customerName = getOrderClientName(order);
-                        const description = `OS #${osNumber} — ${customerName}`;
-
-                        if (advance > 0) {
-                            synced.unshift({
-                                id: 'sync_' + baseId + '_sinal', syncId: baseId + '_sinal', orderSyncId: baseId, syncSource: 'office',
-                                area: 'oficina', type: 'entrada', category: 'Receita de sinal', paymentLabel: 'Sinal pago',
-                                description, osNumber, customerName,
-                                value: advance, isPersonalExpense: false,
-                                date: advanceDateIso, sourceOrderDate: orderDateIso, paymentDate: advanceDateIso,
-                                obs: `Auto-importado da oficina • ${buildPaymentMethodText(order.advancePaymentMethod || order.paymentMethod)}`
-                            });
-                        }
-
-                        if (order.paymentStatus === 'PAGO') {
-                            if (advance > 0 && remaining > 0) {
-                                synced.unshift({
-                                    id: 'sync_' + baseId + '_saldo', syncId: baseId + '_saldo', orderSyncId: baseId, syncSource: 'office',
-                                    area: 'oficina', type: 'entrada', category: 'Receita de serviço', paymentLabel: 'Restante pago',
-                                    description, osNumber, customerName,
-                                    value: remaining, isPersonalExpense: false,
-                                    date: paymentDateIso, sourceOrderDate: orderDateIso, paymentDate: paymentDateIso,
-                                    obs: `Auto-importado da oficina • ${buildPaymentMethodText(order.paymentMethod)}`
-                                });
-                            } else if (advance <= 0 && total > 0) {
-                                synced.unshift({
-                                    id: 'sync_' + baseId + '_avista', syncId: baseId + '_avista', orderSyncId: baseId, syncSource: 'office',
-                                    area: 'oficina', type: 'entrada', category: 'Receita de serviço', paymentLabel: 'Pago à vista',
-                                    description, osNumber, customerName,
-                                    value: total, isPersonalExpense: false,
-                                    date: paymentDateIso, sourceOrderDate: orderDateIso, paymentDate: paymentDateIso,
-                                    obs: `Auto-importado da oficina • ${buildPaymentMethodText(order.paymentMethod)}`
-                                });
-                            }
-                        }
+                        if (!total || existingSyncIds.has(syncId)) return;
+                        next.unshift({
+                            id: 'sync_' + syncId, syncId, syncSource: 'office',
+                            area: 'oficina', type: 'entrada', category: 'Serviço',
+                            description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                            value: total, isPersonalExpense: false,
+                            date: paymentDateIso,
+                            sourceOrderDate: orderDateIso,
+                            paymentDate: paymentDateIso,
+                            realProfit,
+                            realCost,
+                            realMargin: total > 0 ? (realProfit / total) * 100 : 0,
+                            obs: `Auto-importado da oficina • Lucro real: ${money(realProfit)}`
+                        });
                     });
-
-                    return normalizeBankTransactions([...synced, ...manual]);
+                    const paidMap = new Map(paidOrders.map(o => [String(o.id||o.osNumber), o]));
+                    return next
+                        .filter(item => item.syncSource !== 'office' || paidMap.has(String(item.syncId)))
+                        .map(item => {
+                            if (item.syncSource !== 'office') return item;
+                            const o = paidMap.get(String(item.syncId));
+                            const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
+                            const realProfit = Number((typeof calculateOrderRealProfit === 'function' ? calculateOrderRealProfit(o) : total) || 0);
+                            const realCost = Math.max(0, total - realProfit);
+                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
+                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
+                            return { ...item, value: total,
+                                description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
+                                date: paymentDateIso,
+                                sourceOrderDate: orderDateIso,
+                                paymentDate: paymentDateIso,
+                                realProfit,
+                                realCost,
+                                realMargin: total > 0 ? (realProfit / total) * 100 : 0,
+                                obs: `Auto-importado da oficina • Lucro real: ${money(realProfit)}`
+                            };
+                        });
                 });
             }, [orders]);
 
@@ -3040,6 +3059,7 @@
                 const filtered = transactions.filter(t => t.date && t.date.slice(0,7) === selectedMonth);
                 const p = {i:0,e:0}; const w = {i:0,e:0};
                 let personalViaWorkshop = 0;
+                let workshopRealProfit = 0;
                 const catExpP = {}; const catExpW = {};
                 filtered.forEach(t => {
                     const v = Number(t.value||0);
@@ -3048,13 +3068,14 @@
                         if (t.type==='saida') catExpP[t.category] = (catExpP[t.category]||0)+v;
                     } else {
                         t.type==='entrada' ? w.i+=v : w.e+=v;
+                        if (t.type==='entrada' && t.syncSource === 'office') workshopRealProfit += Number(t.realProfit || v || 0);
                         if (t.type==='saida') catExpW[t.category] = (catExpW[t.category]||0)+v;
                         if ((t.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(t.category)) && t.type==='saida') personalViaWorkshop+=v;
                     }
                 });
                 const pSaved = p.i - p.e;
                 const wProfit = w.i - w.e;
-                return { p, w, pSaved, wProfit, personalViaWorkshop, catExpP, catExpW,
+                return { p, w, pSaved, wProfit, workshopRealProfit, workshopRealMargin: w.i > 0 ? (workshopRealProfit / w.i) * 100 : 0, personalViaWorkshop, catExpP, catExpW,
                     totalIncome: p.i+w.i, totalExpense: p.e+w.e, count: filtered.length };
             }, [transactions, selectedMonth]);
 
@@ -3609,16 +3630,7 @@
             };
 
             const editTransaction = (t) => {
-                if (t.syncSource==='office') {
-                    const orderKey = String(t.orderSyncId || t.syncId || '').replace(/_(sinal|saldo|avista)$/,'');
-                    const linkedOrder = (orders || []).find(o => String(o.id || o.osNumber) === orderKey || String(o.osNumber) === String(t.osNumber || '').replace(/\D/g,''));
-                    if (linkedOrder) {
-                        onOpenOrder(linkedOrder, true);
-                    } else {
-                        showToast('OS vinculada não encontrada.','warning');
-                    }
-                    return;
-                }
+                if (t.syncSource==='office') { showToast('Lançamento auto-importado, edite na OS.','info'); return; }
                 if (t.syncSource==='fixed_bill') { showToast('Lançamento da conta fixa é controlado pela aba de contas fixas.','info'); return; }
                 setEditingId(t.id);
                 setForm({ area:t.area, type:t.type, category:t.category,
@@ -4753,6 +4765,7 @@
                                     <p className={`font-usarmy text-sm ${monthlySummary.wProfit>=0?'text-[#d4af37]':'text-red-400'}`}>{money(monthlySummary.wProfit)}</p>
                                     <div className="mt-2">
                                         <ProgressBar value={monthlySummary.w.e} total={budgets.workshop} color="#d4af37" />
+                                        <p className="text-[8px] text-green-400 mt-1">Lucro real OS: {money(monthlySummary.workshopRealProfit)} • {(monthlySummary.workshopRealMargin || 0).toFixed(1)}%</p>
                                         <p className="text-[8px] text-gray-600 mt-1">{pct(monthlySummary.w.e,budgets.workshop)}% do orçamento</p>
                                     </div>
                                 </div>
@@ -5417,14 +5430,7 @@
                                 )}
                                 {filteredTransactions.map(t => {
                                     const isPE = t.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(t.category);
-                                    const displayChip = t.syncSource === 'office' && t.paymentLabel ? t.paymentLabel : t.category;
                                     const catIcon = CAT_ICONS[t.category] || 'circle-dot';
-                                    const officeOs = t.syncSource === 'office';
-                                    const osNumberText = String(t.osNumber || (String(t.description || '').match(/OS\s*#?([0-9]+)/i)?.[1]) || '').trim();
-                                    const customerNameText = String(t.customerName || String(t.description || '').split('—')[1] || '').trim();
-                                    const cleanObs = officeOs
-                                        ? String(t.obs || '').split('•').map(part => part.trim()).filter(part => part && !['sinal','pago à vista','restante','restante quitado','saldo final'].includes(part.toLowerCase())).join(' • ')
-                                        : String(t.obs || '').trim();
                                     return (
                                         <div key={t.id} className="os-card p-3 rounded-xl border border-white/5">
                                             <div className="flex items-start gap-3">
@@ -5436,7 +5442,7 @@
                                                     <div className="flex flex-wrap items-center gap-1 mb-1">
                                                         <TypeBadge type={t.type} />
                                                         <AreaBadge area={t.area} size="xs" />
-                                                        <span className="text-[8px] px-2 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">{displayChip}</span>
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{t.category}</span>
                                                         {isPE && t.area==='oficina' && (
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold border" style={{color:'#a855f7',background:'rgba(168,85,247,0.1)',borderColor:'rgba(168,85,247,0.3)'}}>PESSOAL</span>
                                                         )}
@@ -5447,23 +5453,15 @@
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold border text-emerald-400 bg-emerald-500/10 border-emerald-500/30">FIXA</span>
                                                         )}
                                                     </div>
-                                                    {officeOs ? (
-                                                        <p className="truncate">
-                                                            <span className="font-mono text-[11px] text-gray-400 align-middle">OS #{osNumberText || '----'}</span>
-                                                            <span className="text-gray-500 mx-1">—</span>
-                                                            <span className="text-sm font-bold text-[#d4af37] align-middle">{customerNameText || 'Cliente'}</span>
-                                                        </p>
-                                                    ) : (
-                                                        <p className="text-sm font-semibold text-white truncate">{t.description}</p>
-                                                    )}
-                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t.date?.split('-').reverse().join('/')} {cleanObs ? `• ${cleanObs}` : ''}</p>
+                                                    <p className="text-sm font-semibold text-white truncate">{t.description}</p>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t.date?.split('-').reverse().join('/')} {t.obs?`• ${t.obs}`:''}</p>
                                                 </div>
                                                 <div className="text-right flex-shrink-0">
                                                     <p className={`font-usarmy text-sm ${t.type==='entrada'?'text-green-400':'text-red-400'}`}>
                                                         {t.type==='saida'?'-':'+·'}{money(t.value)}
                                                     </p>
                                                     <div className="flex gap-1 mt-2 justify-end">
-                                                        <button onClick={()=>editTransaction(t)} className="btn-icon text-[#d4af37] w-8 h-8" aria-label={t.syncSource==='office' ? 'Editar OS vinculada' : 'Editar'} title={t.syncSource==='office' ? 'Editar OS vinculada' : 'Editar'}>
+                                                        <button onClick={()=>editTransaction(t)} className="btn-icon text-[#d4af37] w-8 h-8" aria-label="Editar">
                                                             <BankUiIcon name="pencil" size={14} color="#d4af37" />
                                                         </button>
                                                         <button onClick={()=>setConfirmDelete(t.id)} className="btn-icon text-red-500 w-8 h-8" aria-label="Excluir">
@@ -7781,7 +7779,7 @@
                             <AlcantaraBankIntegrated 
                                 orders={orders}
                                 onBack={() => setView('dashboard')}
-                                onOpenOrder={(order, edit = false) => { setSelectedOrder(order); setView(edit ? 'create' : 'detail'); }}
+                                onOpenOrder={(order) => { setSelectedOrder(order); setView('detail'); }}
                             />
                         )}
 
@@ -8163,16 +8161,12 @@
                     }
                 });
 
-                // Calcular custos estimados (assumindo 60% margem para peças)
-                const estimatedPartsCost = totalParts * 0.4; // 40% do valor é custo
-                const estimatedPartsProfit = totalParts * 0.6; // 60% é lucro
-
-                // Lucro de serviços = 100% (mão de obra)
+                // Lucro real: serviços contam como mão de obra; peças/produtos usam o campo Custo.
                 const servicesProfit = totalServices;
-
-                // Lucro de produtos (assumindo 30% margem)
-                const productsProfit = totalProducts * 0.3;
-                const productsCost = totalProducts * 0.7;
+                const estimatedPartsCost = filteredOrders.reduce((acc, order) => acc + asArray(order.parts).reduce((sum, item) => sum + getItemCostTotal(item), 0), 0);
+                const estimatedPartsProfit = filteredOrders.reduce((acc, order) => acc + asArray(order.parts).reduce((sum, item) => sum + getItemProfitTotal(item), 0), 0);
+                const productsCost = filteredOrders.reduce((acc, order) => acc + asArray(order.products).reduce((sum, item) => sum + getItemCostTotal(item), 0), 0);
+                const productsProfit = filteredOrders.reduce((acc, order) => acc + asArray(order.products).reduce((sum, item) => sum + getItemProfitTotal(item), 0), 0);
 
                 const totalProfit = servicesProfit + estimatedPartsProfit + productsProfit;
                 const totalCosts = estimatedPartsCost + productsCost;
@@ -8413,8 +8407,8 @@
                                         ></div>
                                     </div>
                                     <div className="flex justify-between text-[9px] mt-1">
-                                        <span className="text-red-400">Custo est.: {formatCurrency(financialMetrics.estimatedPartsCost)}</span>
-                                        <span className="text-green-400">Lucro est.: {formatCurrency(financialMetrics.estimatedPartsProfit)}</span>
+                                        <span className="text-red-400">Custo real: {formatCurrency(financialMetrics.estimatedPartsCost)}</span>
+                                        <span className="text-green-400">Lucro real: {formatCurrency(financialMetrics.estimatedPartsProfit)}</span>
                                     </div>
                                 </div>
 
@@ -8434,8 +8428,8 @@
                                         ></div>
                                     </div>
                                     <div className="flex justify-between text-[9px] mt-1">
-                                        <span className="text-red-400">Custo est.: {formatCurrency(financialMetrics.productsCost)}</span>
-                                        <span className="text-green-400">Lucro est.: {formatCurrency(financialMetrics.productsProfit)}</span>
+                                        <span className="text-red-400">Custo real: {formatCurrency(financialMetrics.productsCost)}</span>
+                                        <span className="text-green-400">Lucro real: {formatCurrency(financialMetrics.productsProfit)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -8524,7 +8518,7 @@
 
                                     <div className="breakdown-item p-3 rounded-lg">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-red-400">(-) Custos Estimados</span>
+                                            <span className="text-sm text-red-400">(-) Custos Reais</span>
                                             <span className="text-red-400 font-bold font-mono">
                                                 -{formatCurrency(financialMetrics.totalCosts)}
                                             </span>
@@ -8539,7 +8533,7 @@
 
                                     <div className="breakdown-item p-3 rounded-lg metric-highlight">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-green-400 font-bold">(=) LUCRO ESTIMADO</span>
+                                            <span className="text-sm text-green-400 font-bold">(=) LUCRO REAL</span>
                                             <span className="text-green-400 font-bold font-mono text-lg">
                                                 {formatCurrency(financialMetrics.totalProfit)}
                                             </span>
@@ -10085,19 +10079,20 @@
                 discountType: 'none',
                 discountValue: '',
                 paymentMethod: 'PIX',
-                paymentInstallments: 1
+                paymentInstallments: 1,
+                hasAdvancePayment: false,
+                advancePaymentValue: '',
+                advancePaymentDate: '',
+                advancePaymentMethod: 'PIX'
             });
 
             // IMPORTANTE: não mantenha cópia local do catálogo, senão o select fica desatualizado
             // (ex.: quando você cadastra itens no Catálogo/Produtos em outra tela e volta para a OS)
             const catalog = state.catalog || [];
-            const [temp, setTemp] = useState({ name: '', quantity: '', price: '' });
+            const [temp, setTemp] = useState({ name: '', quantity: '', price: '', costPrice: '' });
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
             const [customerInternalNote, setCustomerInternalNote] = useState('');
-            const [showCustomerHistoryPanel, setShowCustomerHistoryPanel] = useState(false);
-            const [showCustomerProfilePanel, setShowCustomerProfilePanel] = useState(false);
-            const [showCustomerInternalNotePanel, setShowCustomerInternalNotePanel] = useState(false);
 // Geração automática do número da OS (apenas para OS NOVA)
             useEffect(() => {
                 if (order) return; // edição: mantém o número existente
@@ -10133,10 +10128,6 @@
 
             const customerOperationalProfile = useMemo(() => (
                 getCustomerOperationalProfile(state.orders || [], formData.customerName, formData.id)
-            ), [state.orders, formData.customerName, formData.id]);
-
-            const customerEquipmentHistoryGroups = useMemo(() => (
-                getCustomerEquipmentHistoryGroups(state.orders || [], formData.customerName, formData.id)
             ), [state.orders, formData.customerName, formData.id]);
 
             const latestCustomerOrder = useMemo(() => (
@@ -10187,6 +10178,7 @@
                     }
 
                     const unitPrice = parseFloat(product.price) || 0;
+                    const costUnitPrice = parseFloat(product.costPrice || product.purchasePrice || 0) || 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         productId: product.id,
@@ -10194,7 +10186,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: 'product'
+                        type: 'product',
+                        costUnitPrice,
+                        costPrice: costUnitPrice,
+                        costTotal: costUnitPrice,
+                        profitTotal: Math.max(0, unitPrice - costUnitPrice)
                     };
 
                     setFormData(prev => ({ ...prev, products: [...(prev.products || []), newItem] }));
@@ -10217,6 +10213,7 @@
                     }
 
                     const unitPrice = parseFloat(item.price) || 0;
+                    const itemCostUnit = (item.type === 'part' || item.type === 'product') ? (parseFloat(item.costPrice || item.costUnitPrice || 0) || 0) : 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         catalogId: item.id,
@@ -10224,7 +10221,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: item.type
+                        type: item.type,
+                        costUnitPrice: itemCostUnit,
+                        costPrice: itemCostUnit,
+                        costTotal: itemCostUnit,
+                        profitTotal: (item.type === 'part' || item.type === 'product') ? Math.max(0, unitPrice - itemCostUnit) : 0
                     };
 
                     if (item.type === 'service') {
@@ -10267,6 +10268,10 @@ const handleAddManual = useCallback(() => {
         }
 
         const totalPrice = unitPrice * quantity;
+        const hasCostControl = type === 'part' || type === 'product';
+        const costUnitPrice = hasCostControl ? (parseFloat(temp.costPrice) || 0) : 0;
+        const costTotal = costUnitPrice * quantity;
+        const profitTotal = hasCostControl ? Math.max(0, totalPrice - costTotal) : 0;
 
         const item = {
             id: Date.now() + Math.random(),
@@ -10274,7 +10279,11 @@ const handleAddManual = useCallback(() => {
             quantity: quantity,
             unitPrice: unitPrice,
             price: totalPrice,
-            type: type
+            type: type,
+            costUnitPrice,
+            costPrice: costTotal,
+            costTotal,
+            profitTotal
         };
 
         setFormData(prev => {
@@ -10290,10 +10299,10 @@ const handleAddManual = useCallback(() => {
 
         dispatch({
             type: 'SAVE_CATALOG_ITEM',
-            item: { name: temp.name.toUpperCase(), price: unitPrice, type }
+            item: { name: temp.name.toUpperCase(), price: unitPrice, type, costPrice: costUnitPrice }
         });
 
-        setTemp({ name: '', quantity: '', price: '' });
+        setTemp({ name: '', quantity: '', price: '', costPrice: '' });
         setSelectedCatalogId('');
         showToast("✅ Item adicionado", "success");
     } catch (err) {
@@ -10401,6 +10410,10 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
             const subtotal = calculateSubtotal(formData);
             const discount = calculateDiscount(formData);
             const total = calculateTotal(formData);
+            const partsProductsProfit = calculatePartsProductsProfit(formData);
+            const realProfit = calculateOrderRealProfit(formData);
+            const realMargin = calculateOrderRealMargin(formData);
+            const hasAdvancePaymentActive = formData.hasAdvancePayment === true || Number(formData.advancePaymentValue || 0) > 0;
 
             return (
                 <div className="space-y-6 pb-10 animate-fadeIn">
@@ -10442,92 +10455,73 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                     {customerHistory.hasHistory && (
                         <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
-                            <div className="flex items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-[10px] font-usarmy text-[#d4af37]">CLIENTE RECORRENTE</p>
-                                    <p className="text-[9px] text-gray-500 leading-tight">
-                                        Cliente com {customerHistory.totalOrders} OS anteriores • {customerEquipmentHistoryGroups.length} equipamentos cadastrados
-                                    </p>
-                                </div>
+                            <p className="text-[10px] font-usarmy text-[#d4af37] text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
+
+                            <div className="grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
                                     onClick={handlePullCustomerData}
-                                    className="text-[8px] font-usarmy text-black bg-[#d4af37] px-3 py-2 rounded-lg whitespace-nowrap"
+                                    className="gold-gradient p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2"
                                 >
+                                    <i data-lucide="user-plus" className="w-4 h-4"></i>
                                     PUXAR DADOS
                                 </button>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setShowCustomerHistoryPanel(prev => !prev)}
-                                className="w-full p-3 rounded-xl bg-black/25 border border-white/5 flex items-center justify-between gap-3"
-                            >
-                                <div className="text-left min-w-0">
-                                    <p className="text-[10px] font-usarmy text-white">VER HISTÓRICO DO CLIENTE</p>
-                                    <p className="text-[9px] text-gray-500 truncate">OS anteriores, equipamentos atendidos e problemas recorrentes</p>
-                                </div>
-                                <i data-lucide={showCustomerHistoryPanel ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-[#d4af37] flex-shrink-0"></i>
-                            </button>
-
-                            <div className="bg-black/20 rounded-xl p-3 border border-white/5 flex items-center justify-between gap-3">
-                                <p className="text-[9px] text-gray-400 leading-relaxed min-w-0">
-                                    {customerOperationalProfile
-                                        ? `${customerOperationalProfile.recurrenceLabel} • ${customerOperationalProfile.favoritePlatform} • ${customerOperationalProfile.daysSinceLastOrder === null ? 'sem data anterior' : `último atendimento há ${customerOperationalProfile.daysSinceLastOrder} dias`}`
-                                        : `${customerHistory.totalOrders} OS anteriores cadastradas`}
-                                </p>
                                 <button
                                     type="button"
-                                    onClick={() => setShowCustomerProfilePanel(prev => !prev)}
-                                    className="text-[8px] font-usarmy text-[#d4af37] border border-[#d4af37]/20 px-3 py-2 rounded-lg bg-[#d4af37]/5 whitespace-nowrap"
+                                    onClick={() => onOpenEquipmentHistory?.()}
+                                    className="p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border border-[#d4af37]/20 text-[#d4af37] bg-black/20"
                                 >
-                                    {showCustomerProfilePanel ? 'FECHAR' : 'ABRIR PERFIL'}
+                                    <i data-lucide="database" className="w-4 h-4"></i>
+                                    HIST. EQUIP.
                                 </button>
                             </div>
 
-                            {showCustomerHistoryPanel && (
-                                <div className="space-y-3 animate-fadeIn">
-                                    <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
-                                        <p className="text-[10px] font-usarmy text-[#d4af37]">HISTÓRICO POR EQUIPAMENTO</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenEquipmentHistory?.()}
-                                            className="text-[8px] font-usarmy text-[#d4af37] border border-[#d4af37]/20 px-3 py-2 rounded-lg bg-[#d4af37]/5"
-                                        >
-                                            HIST. EQUIP.
-                                        </button>
-                                    </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
+                                    <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
+                                    <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
+                                    <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
+                                    <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
+                                </div>
+                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
+                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastDefect || '—'}</p>
+                                </div>
+                            </div>
 
-                                    {customerEquipmentHistoryGroups.length > 0 ? (
-                                        <div className="space-y-3">
-                                            {customerEquipmentHistoryGroups.map((group) => (
-                                                <div key={group.equipment} className="bg-black/20 rounded-lg p-3 border border-white/5 space-y-2">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <p className="text-[10px] text-white font-bold truncate">{group.equipment}</p>
-                                                        <span className="text-[8px] text-[#d4af37] font-usarmy whitespace-nowrap">{group.orders.length} OS</span>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        {group.orders.slice(0, 3).map((historyOrder) => (
-                                                            <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px] border-t border-white/5 pt-2 first:border-t-0 first:pt-0">
-                                                                <div className="min-w-0">
-                                                                    <p className="text-gray-300 truncate">OS #{historyOrder.osNumber || '-'} • {historyOrder.date || '-'}</p>
-                                                                    <p className="text-gray-500 truncate">{historyOrder.defects || 'Sem defeito descrito'}</p>
-                                                                </div>
-                                                                <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                            {customerHistory.lastOrders.length > 0 && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                    <p className="text-[8px] text-gray-500 mb-2">ÚLTIMAS MOVIMENTAÇÕES</p>
+                                    <div className="space-y-2">
+                                        {customerHistory.lastOrders.map((historyOrder) => (
+                                            <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px]">
+                                                <div className="min-w-0">
+                                                    <p className="text-white truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
+                                                    <p className="text-gray-500 truncate">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-[9px] text-gray-500 text-center py-2">Nenhum equipamento anterior encontrado.</p>
-                                    )}
+                                                <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
-                            {showCustomerProfilePanel && customerOperationalProfile && (
-                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3 animate-fadeIn">
+                            {customerOperationalProfile && (
+                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3">
                                     <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">PERFIL OPERACIONAL DO CLIENTE</p>
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -10554,40 +10548,47 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         <p className="text-[10px] text-white leading-tight">{customerOperationalProfile.lastSolution || '—'}</p>
                                     </div>
 
+                                    {customerOperationalProfile.recurringEquipment.length > 0 && (
+                                        <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-2">EQUIPAMENTOS RECORRENTES</p>
+                                            <div className="space-y-2">
+                                                {customerOperationalProfile.recurringEquipment.map((item, index) => (
+                                                    <div key={`${item.name}_${index}`} className="flex items-center justify-between gap-3 text-[9px]">
+                                                        <p className="text-white truncate flex-1">{item.name}</p>
+                                                        <span className="text-[#d4af37] font-bold whitespace-nowrap">{item.count}x</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {customerOperationalProfile.attentionTags.length > 0 && (
-                                        <div className="flex flex-wrap gap-2">
-                                            {customerOperationalProfile.attentionTags.map((tag, index) => (
-                                                <span key={`${tag}_${index}`} className="px-2 py-1 rounded-full border border-[#d4af37]/20 bg-[#d4af37]/10 text-[8px] font-usarmy text-[#f2d06a]">
-                                                    {tag}
-                                                </span>
-                                            ))}
+                                        <div className="space-y-2">
+                                            <p className="text-[8px] text-gray-500">ALERTAS DE ATENÇÃO</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {customerOperationalProfile.attentionTags.map((tag, index) => (
+                                                    <span key={`${tag}_${index}`} className="px-2 py-1 rounded-full border border-[#d4af37]/20 bg-[#d4af37]/10 text-[8px] font-usarmy text-[#f2d06a]">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            <button
-                                type="button"
-                                onClick={() => setShowCustomerInternalNotePanel(prev => !prev)}
-                                className="w-full p-3 rounded-xl bg-black/20 border border-white/5 flex items-center justify-between gap-3"
-                            >
-                                <div className="text-left">
-                                    <p className="text-[10px] font-usarmy text-gray-300">NOTAS INTERNAS DO CLIENTE</p>
-                                    <p className="text-[9px] text-gray-600">Ocultas por padrão • uso interno</p>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
+                                    <span className="text-[8px] text-gray-600">uso interno</span>
                                 </div>
-                                <i data-lucide={showCustomerInternalNotePanel ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-gray-500"></i>
-                            </button>
-
-                            {showCustomerInternalNotePanel && (
-                                <div className="space-y-2 animate-fadeIn">
-                                    <textarea
-                                        className="w-full p-3 rounded-xl h-20 resize-none text-sm"
-                                        placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
-                                        value={customerInternalNote}
-                                        onChange={e => setCustomerInternalNote(e.target.value)}
-                                    />
-                                </div>
-                            )}
+                                <textarea
+                                    className="w-full p-3 rounded-xl h-20 resize-none text-sm"
+                                    placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
+                                    value={customerInternalNote}
+                                    onChange={e => setCustomerInternalNote(e.target.value)}
+                                />
+                            </div>
                         </div>
                     )}
 
@@ -10676,6 +10677,86 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         </div>
                     </div>
 
+                    <div className="os-card p-5 rounded-xl space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-usarmy text-[#d4af37]">SINAL DO CLIENTE</p>
+                                <p className="text-[10px] text-gray-500 mt-1">Use quando o cliente pagar uma entrada antes da quitação.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => updateForm({
+                                    hasAdvancePayment: !hasAdvancePaymentActive,
+                                    advancePaymentValue: hasAdvancePaymentActive ? '' : formData.advancePaymentValue,
+                                    advancePaymentDate: hasAdvancePaymentActive ? '' : (formData.advancePaymentDate || new Date().toISOString().slice(0,10)),
+                                    advancePaymentMethod: hasAdvancePaymentActive ? 'PIX' : (formData.advancePaymentMethod || formData.paymentMethod || 'PIX')
+                                })}
+                                className={`px-4 py-3 rounded-xl text-[10px] font-usarmy border transition-all ${
+                                    hasAdvancePaymentActive ? 'gold-gradient border-[#d4af37]' : 'bg-white/5 text-gray-400 border-white/10'
+                                }`}
+                            >
+                                {hasAdvancePaymentActive ? 'COM SINAL' : 'SEM SINAL'}
+                            </button>
+                        </div>
+
+                        {hasAdvancePaymentActive && (
+                            <div className="space-y-3 animate-fadeIn">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">VALOR DO SINAL</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="w-full p-4 rounded-xl text-sm"
+                                            placeholder="R$ 0,00"
+                                            value={formData.advancePaymentValue || ''}
+                                            onChange={e => updateForm({ advancePaymentValue: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">DATA DO SINAL</label>
+                                        <input
+                                            type="date"
+                                            className="w-full p-4 rounded-xl text-sm"
+                                            value={formData.advancePaymentDate || ''}
+                                            onChange={e => updateForm({ advancePaymentDate: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">FORMA DE PAGAMENTO DO SINAL</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {PAYMENT_METHOD_OPTIONS.map(option => (
+                                            <button
+                                                key={`advance_${option.key}`}
+                                                type="button"
+                                                onClick={() => updateForm({ advancePaymentMethod: option.key })}
+                                                className={`p-3 text-[10px] font-bold rounded-lg transition-all ${
+                                                    (formData.advancePaymentMethod || 'PIX') === option.key ? 'gold-gradient' : 'bg-white/5 text-gray-400'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/30 rounded-xl p-4 border border-white/5 grid grid-cols-2 gap-3">
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 tracking-[0.08em]">SINAL</p>
+                                        <p className="font-usarmy text-green-400 text-base mt-1">R$ {calculateAdvancePayment(formData).toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 tracking-[0.08em]">RESTANTE</p>
+                                        <p className="font-usarmy text-[#d4af37] text-base mt-1">R$ {calculateRemainingPayment(formData).toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="os-card p-5 rounded-xl space-y-5">
                         <div>
                             <p className="text-[10px] font-usarmy text-gray-500 mb-3">ADICIONAR DO CATÁLOGO</p>
@@ -10757,11 +10838,11 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     value={temp.name} 
                                     onChange={e => setTemp({...temp, name: e.target.value})} 
                                 />
-                                <div className="flex gap-2">
+                                <div className={(type === 'part' || type === 'product') ? "grid grid-cols-[0.72fr_1fr_1fr] gap-2" : "grid grid-cols-[0.72fr_1fr] gap-2"}>
                                     <input 
                                         type="number"
                                         min="1"
-                                        className="w-20 p-3 text-sm rounded-lg" 
+                                        className="w-full p-3 text-sm rounded-lg" 
                                         placeholder="Qtde" 
                                         autoComplete="off"
                                         value={temp.quantity} 
@@ -10771,20 +10852,41 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         type="number" 
                                         step="0.01"
                                         min="0"
-                                        className="w-28 p-3 text-sm rounded-lg" 
-                                        placeholder="R$ Unitário" 
+                                        className="w-full p-3 text-sm rounded-lg" 
+                                        placeholder="Venda" 
                                         autoComplete="off"
                                         value={temp.price} 
                                         onChange={e => setTemp({...temp, price: e.target.value})} 
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddManual}
-                                        className="gold-gradient px-4 rounded-lg font-bold text-xl btn-icon"
-                                    >
-                                        +
-                                    </button>
+                                    {(type === 'part' || type === 'product') && (
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="w-full p-3 text-sm rounded-lg"
+                                            placeholder="Custo"
+                                            autoComplete="off"
+                                            value={temp.costPrice}
+                                            onChange={e => setTemp({...temp, costPrice: e.target.value})}
+                                        />
+                                    )}
                                 </div>
+                                {(type === 'part' || type === 'product') && temp.price && temp.costPrice && (
+                                    <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-3 py-2 flex items-center justify-between">
+                                        <span className="text-[9px] font-usarmy text-gray-500">LUCRO ESTIMADO</span>
+                                        <span className="text-xs font-bold text-green-400">
+                                            R$ {Math.max(0, ((parseFloat(temp.price) || 0) - (parseFloat(temp.costPrice) || 0)) * (parseInt(temp.quantity) || 1)).toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleAddManual}
+                                    className="gold-gradient w-full h-12 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2 shadow-lg shadow-yellow-900/10 active:scale-[0.98]"
+                                >
+                                    <span className="text-lg leading-none">+</span>
+                                    <span>ADICIONAR ITEM AO ORÇAMENTO</span>
+                                </button>
                             </div>
                         </div>
 
@@ -10832,6 +10934,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
                                         )}
+                                        {Number(item.profitTotal || 0) > 0 && (
+                                            <p className="text-[10px] text-green-400 mt-1">Lucro peça: R$ {Number(item.profitTotal || 0).toFixed(2)}</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-[#d4af37] font-bold">
@@ -10859,6 +10964,9 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                             <span className="text-xs text-gray-500 ml-2">
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
+                                        )}
+                                        {Number(item.profitTotal || 0) > 0 && (
+                                            <p className="text-[10px] text-green-400 mt-1">Lucro produto: R$ {Number(item.profitTotal || 0).toFixed(2)}</p>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -11006,11 +11114,36 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 )}
 
+                                {partsProductsProfit > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-green-400">Lucro peças/produtos:</span>
+                                        <span className="text-green-400 font-bold">R$ {partsProductsProfit.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                {realProfit > 0 && (
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-[#d4af37]">Lucro total da OS:</span>
+                                        <span className="text-[#d4af37] font-bold">R$ {realProfit.toFixed(2)} • {realMargin.toFixed(1)}%</span>
+                                    </div>
+                                )}
+
                                 <div className="pt-3 border-t border-[#d4af37]/30 space-y-2">
                                     <div className="flex justify-between items-center gap-3">
                                         <span className="font-usarmy text-[#d4af37] text-lg leading-none">TOTAL</span>
                                         <span className="font-usarmy text-[#d4af37] text-2xl leading-none text-right">R$ {total.toFixed(2)}</span>
                                     </div>
+                                    {calculateAdvancePayment(formData) > 0 && (
+                                        <div className="flex justify-between text-[11px] text-gray-400">
+                                            <span>Sinal pago:</span>
+                                            <span className="text-green-400 font-bold">R$ {calculateAdvancePayment(formData).toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    {calculateAdvancePayment(formData) > 0 && (
+                                        <div className="flex justify-between text-[11px] text-gray-400">
+                                            <span>{formData.paymentStatus === 'PAGO' ? 'Restante quitado:' : 'Restante a receber:'}</span>
+                                            <span className="text-white font-bold">R$ {calculateRemainingPayment(formData).toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <div className="text-[11px] text-gray-400 leading-relaxed">
                                         <span className="text-gray-500">Pagamento:</span>{' '}
                                         <span className="text-gray-300">{getPaymentMethodLabel(formData.paymentMethod)}</span>
