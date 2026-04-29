@@ -426,9 +426,6 @@
         }
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
 
-        details > summary::-webkit-details-marker { display: none; }
-        details > summary { list-style: none; }
-
 
         .dashboard-premium-btn {
             position: relative;
@@ -587,6 +584,15 @@
             border-radius:9999px;
             border:2px solid rgba(111,143,66,0.38);
         }
+
+
+        /* MINI MÓDULO PROFISSIONAL DE PEÇAS / PRODUTOS NA OS */
+        .os-manual-grid { display: grid; grid-template-columns: 0.62fr 1fr 1fr; gap: 8px; width: 100%; }
+        .os-add-item-btn { width: 100%; min-height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 10px 24px rgba(212,175,55,0.16); }
+        .os-add-item-btn:active { transform: scale(0.98); }
+        .profit-mini-card { background: linear-gradient(145deg, rgba(13,31,13,0.82) 0%, rgba(10,20,10,0.82) 100%); border: 1px solid rgba(34,197,94,0.22); }
+        .cost-mini-card { background: linear-gradient(145deg, rgba(45,13,13,0.66) 0%, rgba(32,10,10,0.66) 100%); border: 1px solid rgba(239,68,68,0.18); }
+        @media (max-width: 380px) { .os-manual-grid { grid-template-columns: 0.55fr 1fr 1fr; gap: 6px; } .os-manual-grid input { padding-left: 8px !important; padding-right: 8px !important; font-size: 13px !important; } }
 
     </style>
 </head>
@@ -1295,7 +1301,7 @@
         };
 
         const LOGO_URL = "https://i.ibb.co/LFtsfFp/logo.jpg";
-        const APP_VERSION = "V15.1";
+        const APP_VERSION = "V15.2";
         const DADOS_EMPRESA = {
             nome: "ALCANTARA ARMEIRO",
             cnpj: "59.601.771/0001-87",
@@ -1303,6 +1309,65 @@
             bairro: "Vila Nova Cachoeirinha",
             cidade: "São Paulo - SP, 02479000",
             contato: "(11) 96735-1384 | alcantara.armeiro@gmail.com"
+        };
+
+
+        // ========== LOGO ROBUSTO PARA PDF ==========
+        // jsPDF pode falhar com imagem externa por CORS/offline. O PDF tenta ícones locais primeiro.
+        const PDF_LOGO_SOURCES = [
+            'icons/icon-512x512.png',
+            'icons/icon-384x384.png',
+            'icons/icon-192x192.png',
+            LOGO_URL
+        ];
+        let PDF_LOGO_CACHE = null;
+        const getPdfLogoFormat = (dataUrl = '') => dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+        const loadPdfLogoFromSource = (src) => new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                try {
+                    const size = Math.max(img.naturalWidth || img.width || 512, img.naturalHeight || img.height || 512);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#050505';
+                    ctx.fillRect(0, 0, size, size);
+                    const drawW = img.naturalWidth || img.width || size;
+                    const drawH = img.naturalHeight || img.height || size;
+                    const scale = Math.min(size / drawW, size / drawH);
+                    const w = drawW * scale;
+                    const h = drawH * scale;
+                    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                    resolve(canvas.toDataURL('image/png'));
+                } catch (error) { reject(error); }
+            };
+            img.onerror = reject;
+            img.src = src;
+            setTimeout(() => reject(new Error('Timeout ao carregar logo')), 4500);
+        });
+        const getPdfLogoDataUrl = async () => {
+            if (PDF_LOGO_CACHE) return PDF_LOGO_CACHE;
+            for (const src of PDF_LOGO_SOURCES) {
+                try {
+                    const dataUrl = await loadPdfLogoFromSource(src);
+                    if (dataUrl) {
+                        PDF_LOGO_CACHE = dataUrl;
+                        return PDF_LOGO_CACHE;
+                    }
+                } catch (_) {}
+            }
+            return null;
+        };
+        const drawPdfLogoFallback = (doc, x = 10, y = 5, w = 35, h = 35) => {
+            doc.setDrawColor(212, 175, 55);
+            doc.setFillColor(8, 8, 8);
+            doc.circle(x + w / 2, y + h / 2, Math.min(w, h) / 2, 'FD');
+            doc.setTextColor(212, 175, 55);
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(Math.max(14, Math.round(w * 0.55)));
+            doc.text('AA', x + w / 2, y + h / 2 + 4, { align: 'center' });
         };
 
         const STATUS_CONFIG = {
@@ -1563,18 +1628,29 @@
             return Math.max(0, subtotal - discount);
         };
 
-        const calculateAdvancePayment = (order) => {
-            const enabled = order?.hasAdvancePayment === true || order?.hasAdvancePayment === 'true';
-            const raw = parseFloat(order?.advancePaymentValue || 0) || 0;
-            const total = calculateTotal(order || {});
-            if (!enabled || raw <= 0) return 0;
-            return Math.min(raw, total);
+        const getItemCostTotal = (item) => {
+            const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
+            if (item?.costTotal !== undefined && item?.costTotal !== null) return parseFloat(item.costTotal) || 0;
+            const unitCost = parseFloat(item?.costUnitPrice ?? item?.costPrice ?? item?.purchasePrice ?? 0) || 0;
+            return unitCost * quantity;
         };
 
-        const calculateRemainingPayment = (order) => {
-            const total = calculateTotal(order || {});
-            const advance = calculateAdvancePayment(order || {});
-            return Math.max(0, total - advance);
+        const calculateOrderCost = (order) => {
+            const partsCost = (order?.parts || []).reduce((acc, item) => acc + getItemCostTotal(item), 0);
+            const productsCost = (order?.products || []).reduce((acc, item) => acc + getItemCostTotal(item), 0);
+            return partsCost + productsCost;
+        };
+
+        const calculateOrderGrossItemProfit = (order) => {
+            const partsSale = (order?.parts || []).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+            const productsSale = (order?.products || []).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+            return Math.max(0, partsSale + productsSale - calculateOrderCost(order));
+        };
+
+        const calculateOrderNetMargin = (order) => {
+            const subtotal = calculateSubtotal(order);
+            const total = calculateTotal(order);
+            return subtotal > 0 ? Math.max(0, (calculateOrderGrossItemProfit(order) - calculateDiscount(order)) / subtotal * total) : 0;
         };
 
         const PAYMENT_METHOD_OPTIONS = [
@@ -1925,20 +2001,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -2195,20 +2262,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -2262,15 +2320,7 @@
             }
 
             const paymentReceiptLabel = getPaymentSummaryText(order).replace('Pagamento: ', 'forma de pagamento ');
-            const advance = calculateAdvancePayment(order);
-            const remaining = calculateRemainingPayment(order);
-            const receiptAmount = order.paymentStatus === 'PAGO' ? total : advance;
-            const receiptComplement = advance > 0
-                ? (order.paymentStatus === 'PAGO' && remaining > 0
-                    ? ` Sinal pago: R$ ${advance.toFixed(2)}. Restante pago: R$ ${remaining.toFixed(2)}.`
-                    : ` Sinal pago: R$ ${advance.toFixed(2)}. Restante a receber: R$ ${remaining.toFixed(2)}.`)
-                : '';
-            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${receiptAmount.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.${receiptComplement}`;
+            const receiptText = `Recebi de ${order.customerName}, a quantia de R$ ${total.toFixed(2)}, referente a: ${descricaoItens || 'serviços/produtos'} no equipamento ${order.equipment}, conforme Ordem de Serviço n° ${order.osNumber}, datado de ${order.date}, com ${paymentReceiptLabel}.`;
 
             const lines = doc.splitTextToSize(receiptText, 140);
             yPos = checkPageBreak(yPos, lines.length * 5);
@@ -2414,20 +2464,11 @@
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 45, 'F');
 
-            try {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = LOGO_URL;
-                await new Promise((resolve, reject) => {
-                    logoImg.onload = resolve;
-                    logoImg.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                doc.addImage(logoImg, 'JPEG', 10, 5, 35, 35);
-            } catch (e) {
-                doc.setTextColor(212, 175, 55);
-                doc.setFontSize(24);
-                doc.text('AA', 20, 25);
+            const logoDataUrl = await getPdfLogoDataUrl();
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), 10, 5, 35, 35);
+            } else {
+                drawPdfLogoFallback(doc, 10, 5, 35, 35);
             }
 
             doc.setTextColor(212, 175, 55);
@@ -2915,78 +2956,50 @@
                     return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
                 };
 
-                const syncableOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO' || calculateAdvancePayment(o) > 0);
-
+                const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
                 setTransactions(prev => {
-                    const manual = prev.filter(t => t.syncSource !== 'office');
-                    const synced = [];
-
-                    syncableOrders.forEach(order => {
-                        const baseId = String(order.id || order.osNumber);
-                        const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
-                        const advance = Number(calculateAdvancePayment(order) || 0);
-                        const remaining = Math.max(0, total - advance);
+                    const next = [...prev];
+                    const existingSyncIds = new Set(next.filter(t => t.syncSource === 'office').map(t => t.syncId));
+                    paidOrders.forEach(order => {
+                        const syncId = String(order.id || order.osNumber);
+                        const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
                         const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
-                        const advanceDateIso = String(order.advancePaymentDate || '').trim() || orderDateIso;
                         const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
-
-                        if (advance > 0) {
-                            synced.unshift({
-                                id: 'sync_' + baseId + '_sinal',
-                                syncId: baseId + '_sinal',
-                                orderSyncId: baseId,
-                                syncSource: 'office',
-                                area: 'oficina',
-                                type: 'entrada',
-                                category: 'Sinal de OS',
-                                description: `Sinal OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                                value: advance,
-                                isPersonalExpense: false,
-                                date: advanceDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: advanceDateIso,
-                                obs: `Auto-importado da oficina • sinal • ${getPaymentMethodLabel(order.advancePaymentMethod || order.paymentMethod)}`
-                            });
-                        }
-
-                        if (order.paymentStatus === 'PAGO' && advance > 0 && remaining > 0) {
-                            synced.unshift({
-                                id: 'sync_' + baseId + '_saldo',
-                                syncId: baseId + '_saldo',
-                                orderSyncId: baseId,
-                                syncSource: 'office',
-                                area: 'oficina',
-                                type: 'entrada',
-                                category: 'Serviço',
-                                description: `Restante OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                                value: remaining,
-                                isPersonalExpense: false,
-                                date: paymentDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: paymentDateIso,
-                                obs: 'Auto-importado da oficina • restante do pagamento após sinal'
-                            });
-                        } else if (order.paymentStatus === 'PAGO' && advance <= 0 && total > 0) {
-                            synced.unshift({
-                                id: 'sync_' + baseId + '_avista',
-                                syncId: baseId + '_avista',
-                                orderSyncId: baseId,
-                                syncSource: 'office',
-                                area: 'oficina',
-                                type: 'entrada',
-                                category: 'Serviço',
-                                description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                                value: total,
-                                isPersonalExpense: false,
-                                date: paymentDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: paymentDateIso,
-                                obs: `Auto-importado da oficina • pagamento à vista • ${getPaymentMethodLabel(order.paymentMethod)}`
-                            });
-                        }
+                        if (!total || existingSyncIds.has(syncId)) return;
+                        next.unshift({
+                            id: 'sync_' + syncId, syncId, syncSource: 'office',
+                            area: 'oficina', type: 'entrada', category: 'Serviço',
+                            description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                            value: total, isPersonalExpense: false,
+                            itemCost: typeof calculateOrderCost === 'function' ? calculateOrderCost(order) : 0,
+                            itemProfit: typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(order) : 0,
+                            realProfit: typeof calculateOrderNetMargin === 'function' ? calculateOrderNetMargin(order) : 0,
+                            date: paymentDateIso,
+                            sourceOrderDate: orderDateIso,
+                            paymentDate: paymentDateIso,
+                            obs: `Auto-importado da oficina • Lucro peças/produtos: R$ ${(typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(order) : 0).toFixed(2)}`
+                        });
                     });
-
-                    return normalizeBankTransactions([...synced, ...manual]);
+                    const paidMap = new Map(paidOrders.map(o => [String(o.id||o.osNumber), o]));
+                    return next
+                        .filter(item => item.syncSource !== 'office' || paidMap.has(String(item.syncId)))
+                        .map(item => {
+                            if (item.syncSource !== 'office') return item;
+                            const o = paidMap.get(String(item.syncId));
+                            const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
+                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
+                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
+                            return { ...item, value: total,
+                                itemCost: typeof calculateOrderCost === 'function' ? calculateOrderCost(o) : 0,
+                                itemProfit: typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(o) : 0,
+                                realProfit: typeof calculateOrderNetMargin === 'function' ? calculateOrderNetMargin(o) : 0,
+                                description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
+                                date: paymentDateIso,
+                                sourceOrderDate: orderDateIso,
+                                paymentDate: paymentDateIso,
+                                obs: `Auto-importado da oficina • Lucro peças/produtos: R$ ${(typeof calculateOrderGrossItemProfit === 'function' ? calculateOrderGrossItemProfit(o) : 0).toFixed(2)}`
+                            };
+                        });
                 });
             }, [orders]);
 
@@ -4131,26 +4144,7 @@
 
                 let y = 18;
                 let pageNumber = 1;
-                let logoDataUrl = null;
-
-                try {
-                    const logoImg = new Image();
-                    logoImg.crossOrigin = 'Anonymous';
-                    logoImg.src = LOGO_URL;
-                    await new Promise((resolve, reject) => {
-                        logoImg.onload = resolve;
-                        logoImg.onerror = reject;
-                        setTimeout(reject, 5000);
-                    });
-                    const canvas = document.createElement('canvas');
-                    canvas.width = logoImg.naturalWidth || 300;
-                    canvas.height = logoImg.naturalHeight || 300;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(logoImg, 0, 0);
-                    logoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                } catch (e) {
-                    logoDataUrl = null;
-                }
+                let logoDataUrl = await getPdfLogoDataUrl();
 
                 const moneyPdf = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 const drawFooter = () => {
@@ -4179,7 +4173,7 @@
                     doc.setFillColor(5, 5, 5);
                     doc.rect(0, 0, pageWidth, firstPage ? 42 : 32, 'F');
                     if (logoDataUrl) {
-                        doc.addImage(logoDataUrl, 'JPEG', marginLeft, firstPage ? 6 : 5, firstPage ? 26 : 22, firstPage ? 26 : 22);
+                        doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), marginLeft, firstPage ? 6 : 5, firstPage ? 26 : 22, firstPage ? 26 : 22);
                     } else {
                         doc.setTextColor(212, 175, 55);
                         doc.setFont('helvetica', 'bold');
@@ -4216,7 +4210,7 @@
                     doc.roundedRect(24, 24, pageWidth - 48, 58, 4, 4, 'F');
 
                     if (logoDataUrl) {
-                        doc.addImage(logoDataUrl, 'JPEG', centerX - 20, 32, 40, 40);
+                        doc.addImage(logoDataUrl, getPdfLogoFormat(logoDataUrl), centerX - 20, 32, 40, 40);
                     } else {
                         doc.setTextColor(212, 175, 55);
                         doc.setFont('helvetica', 'bold');
@@ -10073,17 +10067,13 @@
                 discountType: 'none',
                 discountValue: '',
                 paymentMethod: 'PIX',
-                paymentInstallments: 1,
-                hasAdvancePayment: false,
-                advancePaymentValue: '',
-                advancePaymentDate: '',
-                advancePaymentMethod: 'PIX'
+                paymentInstallments: 1
             });
 
             // IMPORTANTE: não mantenha cópia local do catálogo, senão o select fica desatualizado
             // (ex.: quando você cadastra itens no Catálogo/Produtos em outra tela e volta para a OS)
             const catalog = state.catalog || [];
-            const [temp, setTemp] = useState({ name: '', quantity: '', price: '' });
+            const [temp, setTemp] = useState({ name: '', quantity: '', price: '', costPrice: '' });
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
             const [customerInternalNote, setCustomerInternalNote] = useState('');
@@ -10172,6 +10162,7 @@
                     }
 
                     const unitPrice = parseFloat(product.price) || 0;
+                    const costUnitPrice = parseFloat(product.costPrice || product.purchasePrice || 0) || 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         productId: product.id,
@@ -10179,7 +10170,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: 'product'
+                        type: 'product',
+                        costUnitPrice,
+                        costPrice: costUnitPrice,
+                        costTotal: costUnitPrice,
+                        profitTotal: Math.max(0, unitPrice - costUnitPrice)
                     };
 
                     setFormData(prev => ({ ...prev, products: [...(prev.products || []), newItem] }));
@@ -10202,6 +10197,7 @@
                     }
 
                     const unitPrice = parseFloat(item.price) || 0;
+                    const itemCostUnit = (item.type === 'part' || item.type === 'product') ? (parseFloat(item.costPrice || item.costUnitPrice || item.purchasePrice || 0) || 0) : 0;
                     const newItem = {
                         id: Date.now() + Math.random(),
                         catalogId: item.id,
@@ -10209,7 +10205,11 @@
                         quantity: 1,
                         unitPrice,
                         price: unitPrice,
-                        type: item.type
+                        type: item.type,
+                        costUnitPrice: itemCostUnit,
+                        costPrice: itemCostUnit,
+                        costTotal: itemCostUnit,
+                        profitTotal: (item.type === 'part' || item.type === 'product') ? Math.max(0, unitPrice - itemCostUnit) : 0
                     };
 
                     if (item.type === 'service') {
@@ -10238,53 +10238,29 @@ const handleAddManual = useCallback(() => {
             showToast("⚠️ Preencha todos os campos", "warning");
             return;
         }
-
         const quantity = parseInt(temp.quantity) || 1;
-        if (quantity <= 0) {
-            showToast("⚠️ Quantidade deve ser maior que zero", "warning");
-            return;
-        }
-
+        if (quantity <= 0) { showToast("⚠️ Quantidade deve ser maior que zero", "warning"); return; }
         const unitPrice = parseFloat(temp.price);
-        if (isNaN(unitPrice) || unitPrice < 0) {
-            showToast("⚠️ Preço inválido", "warning");
-            return;
-        }
-
+        if (isNaN(unitPrice) || unitPrice < 0) { showToast("⚠️ Valor de venda inválido", "warning"); return; }
+        const hasCostControl = type === 'part' || type === 'product';
+        const costUnitPrice = hasCostControl ? (parseFloat(temp.costPrice || 0) || 0) : 0;
+        if (hasCostControl && costUnitPrice < 0) { showToast("⚠️ Custo inválido", "warning"); return; }
         const totalPrice = unitPrice * quantity;
-
-        const item = {
-            id: Date.now() + Math.random(),
-            name: temp.name.toUpperCase(),
-            quantity: quantity,
-            unitPrice: unitPrice,
-            price: totalPrice,
-            type: type
-        };
-
+        const costTotal = costUnitPrice * quantity;
+        const profitTotal = hasCostControl ? Math.max(0, totalPrice - costTotal) : 0;
+        const item = { id: Date.now() + Math.random(), name: temp.name.toUpperCase(), quantity, unitPrice, price: totalPrice, type, costUnitPrice, costPrice: costUnitPrice, costTotal, profitTotal };
         setFormData(prev => {
-            if (type === 'service') {
-                return { ...prev, services: [...prev.services, item] };
-            } else if (type === 'part') {
-                return { ...prev, parts: [...prev.parts, item] };
-            } else if (type === 'product') {
-                return { ...prev, products: [...prev.products, item] };
-            }
+            if (type === 'service') return { ...prev, services: [...prev.services, item] };
+            if (type === 'part') return { ...prev, parts: [...prev.parts, item] };
+            if (type === 'product') return { ...prev, products: [...prev.products, item] };
             return prev;
         });
-
-        dispatch({
-            type: 'SAVE_CATALOG_ITEM',
-            item: { name: temp.name.toUpperCase(), price: unitPrice, type }
-        });
-
-        setTemp({ name: '', quantity: '', price: '' });
+        dispatch({ type: 'SAVE_CATALOG_ITEM', item: { name: temp.name.toUpperCase(), price: unitPrice, type, costPrice: costUnitPrice } });
+        setTemp({ name: '', quantity: '', price: '', costPrice: '' });
         setSelectedCatalogId('');
-        showToast("✅ Item adicionado", "success");
-    } catch (err) {
-        console.error(err);
-        showToast("❌ Erro ao adicionar item", "error");
-    }
+        setIsDirty(true);
+        showToast(hasCostControl ? `✅ Item adicionado • Lucro R$ ${profitTotal.toFixed(2)}` : "✅ Item adicionado", "success");
+    } catch (err) { console.error(err); showToast("❌ Erro ao adicionar item", "error"); }
 }, [temp, type, dispatch]);
 
 
@@ -10362,15 +10338,10 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                     const nextPaymentDate = formData.paymentStatus === 'PAGO'
                         ? (formData.paymentDate || previousOrder?.paymentDate || new Date().toISOString().slice(0,10))
                         : '';
-                    const normalizedAdvanceValue = formData.hasAdvancePayment ? Math.min(parseFloat(formData.advancePaymentValue || 0) || 0, calculateTotal(formData)) : 0;
                     let savedOrder = {
                         ...formData,
                         operationalStatus: formData.operationalStatus || 'ENTRADA',
-                        paymentDate: nextPaymentDate,
-                        hasAdvancePayment: normalizedAdvanceValue > 0,
-                        advancePaymentValue: normalizedAdvanceValue > 0 ? normalizedAdvanceValue : '',
-                        advancePaymentDate: normalizedAdvanceValue > 0 ? (formData.advancePaymentDate || previousOrder?.advancePaymentDate || new Date().toISOString().slice(0,10)) : '',
-                        advancePaymentMethod: formData.advancePaymentMethod || formData.paymentMethod || 'PIX'
+                        paymentDate: nextPaymentDate
                     };
                     saveCustomerNote(savedOrder.customerName, customerInternalNote);
                     dispatch({ type: 'SAVE_ORDER', order: savedOrder });
@@ -10391,8 +10362,12 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
             const subtotal = calculateSubtotal(formData);
             const discount = calculateDiscount(formData);
             const total = calculateTotal(formData);
-            const advancePayment = calculateAdvancePayment(formData);
-            const remainingPayment = calculateRemainingPayment(formData);
+            const itemCostTotal = calculateOrderCost(formData);
+            const itemGrossProfit = calculateOrderGrossItemProfit(formData);
+            const itemNetMargin = calculateOrderNetMargin(formData);
+            const itemMarginPercent = (formData.parts.length + formData.products.length) > 0 && (itemCostTotal + itemGrossProfit) > 0
+                ? Math.round((itemGrossProfit / (itemCostTotal + itemGrossProfit)) * 100)
+                : 0;
 
             return (
                 <div className="space-y-6 pb-10 animate-fadeIn">
@@ -10433,16 +10408,8 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                     />
 
                     {customerHistory.hasHistory && (
-                        <div className="os-card p-3 rounded-xl space-y-3 border border-[#d4af37]/10 bg-black/10">
-                            <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-3">
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-usarmy text-[#d4af37]">CLIENTE JÁ ATENDIDO</p>
-                                    <p className="text-[10px] text-gray-500 truncate">{customerHistory.totalOrders} OS anteriores • Último: {customerHistory.lastEquipment || '—'}</p>
-                                </div>
-                                <span className={`px-2 py-1 rounded-full text-[8px] font-usarmy ${customerHistory.pendingOrders > 0 ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
-                                    {customerHistory.pendingOrders > 0 ? `${customerHistory.pendingOrders} pend.` : 'OK'}
-                                </span>
-                            </div>
+                        <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
+                            <p className="text-[10px] font-usarmy text-[#d4af37] text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
 
                             <div className="grid grid-cols-2 gap-2">
                                 <button
@@ -10462,16 +10429,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     HIST. EQUIP.
                                 </button>
                             </div>
-
-                            <details className="group rounded-xl border border-white/5 bg-black/20 overflow-hidden">
-                                <summary className="list-none cursor-pointer p-3 flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="text-[9px] font-usarmy text-gray-400">HISTÓRICO E PERFIL OPERACIONAL</p>
-                                        <p className="text-[8px] text-gray-600">Toque para abrir os dados internos do cliente</p>
-                                    </div>
-                                    <span className="text-[#d4af37] text-xs group-open:rotate-180 transition-transform">⌄</span>
-                                </summary>
-                                <div className="p-3 pt-0 space-y-3">
 
                             <div className="grid grid-cols-2 gap-2">
                                 <div className="bg-black/25 rounded-lg p-3 border border-white/5">
@@ -10586,8 +10543,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     onChange={e => setCustomerInternalNote(e.target.value)}
                                 />
                             </div>
-                                </div>
-                            </details>
                         </div>
                     )}
 
@@ -10676,65 +10631,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                         </div>
                     </div>
 
-                    <div className="os-card p-4 rounded-xl space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <p className="text-[10px] font-usarmy text-gray-500">SINAL / PAGAMENTO ANTECIPADO</p>
-                                <p className="text-[8px] text-gray-600">Use somente quando o cliente deixar um valor antes da finalização.</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => updateForm({
-                                    hasAdvancePayment: !formData.hasAdvancePayment,
-                                    advancePaymentValue: !formData.hasAdvancePayment ? (formData.advancePaymentValue || '') : '',
-                                    advancePaymentDate: !formData.hasAdvancePayment ? (formData.advancePaymentDate || new Date().toISOString().slice(0,10)) : ''
-                                })}
-                                className={`px-3 py-2 rounded-lg border font-usarmy text-[9px] ${formData.hasAdvancePayment ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-white/10 text-gray-500 bg-black/20'}`}
-                            >
-                                {formData.hasAdvancePayment ? 'COM SINAL' : 'SEM SINAL'}
-                            </button>
-                        </div>
-
-                        {formData.hasAdvancePayment && (
-                            <div className="grid grid-cols-1 gap-3">
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    className="w-full p-4 rounded-xl"
-                                    placeholder="Valor do sinal"
-                                    value={formData.advancePaymentValue || ''}
-                                    onChange={e => updateForm({ advancePaymentValue: e.target.value })}
-                                />
-                                <input
-                                    type="date"
-                                    className="w-full p-4 rounded-xl"
-                                    value={formData.advancePaymentDate || new Date().toISOString().slice(0,10)}
-                                    onChange={e => updateForm({ advancePaymentDate: e.target.value })}
-                                />
-                                <select
-                                    className="w-full p-4 rounded-xl"
-                                    value={formData.advancePaymentMethod || formData.paymentMethod || 'PIX'}
-                                    onChange={e => updateForm({ advancePaymentMethod: e.target.value })}
-                                >
-                                    {PAYMENT_METHOD_OPTIONS.map(opt => (
-                                        <option key={opt.key} value={opt.key}>{opt.label}</option>
-                                    ))}
-                                </select>
-                                <div className="rounded-xl bg-black/20 border border-white/5 p-3 text-[10px] space-y-1">
-                                    <div className="flex justify-between">
-                                        <span className="text-green-400">Sinal pago:</span>
-                                        <span className="text-green-400 font-bold">R$ {advancePayment.toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-yellow-400">Restante a receber:</span>
-                                        <span className="text-yellow-400 font-bold">R$ {remainingPayment.toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
                     <div className="os-card p-5 rounded-xl space-y-5">
                         <div>
                             <p className="text-[10px] font-usarmy text-gray-500 mb-3">ADICIONAR DO CATÁLOGO</p>
@@ -10816,34 +10712,19 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     value={temp.name} 
                                     onChange={e => setTemp({...temp, name: e.target.value})} 
                                 />
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="number"
-                                        min="1"
-                                        className="w-20 p-3 text-sm rounded-lg" 
-                                        placeholder="Qtde" 
-                                        autoComplete="off"
-                                        value={temp.quantity} 
-                                        onChange={e => setTemp({...temp, quantity: e.target.value})} 
-                                    />
-                                    <input 
-                                        type="number" 
-                                        step="0.01"
-                                        min="0"
-                                        className="w-28 p-3 text-sm rounded-lg" 
-                                        placeholder="R$ Unitário" 
-                                        autoComplete="off"
-                                        value={temp.price} 
-                                        onChange={e => setTemp({...temp, price: e.target.value})} 
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddManual}
-                                        className="gold-gradient px-4 rounded-lg font-bold text-xl btn-icon"
-                                    >
-                                        +
-                                    </button>
+                                <div className="os-manual-grid">
+                                    <input type="number" min="1" className="w-full p-3 text-sm rounded-lg" placeholder="Qtde" autoComplete="off" value={temp.quantity} onChange={e => setTemp({...temp, quantity: e.target.value})} />
+                                    <input type="number" step="0.01" min="0" className="w-full p-3 text-sm rounded-lg" placeholder="R$ Venda" autoComplete="off" value={temp.price} onChange={e => setTemp({...temp, price: e.target.value})} />
+                                    <input type="number" step="0.01" min="0" className="w-full p-3 text-sm rounded-lg" placeholder="Custo" autoComplete="off" value={type === 'service' ? '' : temp.costPrice} disabled={type === 'service'} onChange={e => setTemp({...temp, costPrice: e.target.value})} />
                                 </div>
+                                {(type === 'part' || type === 'product') && temp.price && temp.quantity && (
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="bg-black/30 rounded-xl p-3 border border-white/5"><p className="text-[8px] text-gray-500 font-usarmy">VENDA</p><p className="text-xs text-[#d4af37] font-bold">R$ {((parseFloat(temp.price) || 0) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
+                                        <div className="cost-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">CUSTO</p><p className="text-xs text-red-300 font-bold">R$ {((parseFloat(temp.costPrice) || 0) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
+                                        <div className="profit-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p><p className="text-xs text-green-400 font-bold">R$ {Math.max(0, ((parseFloat(temp.price) || 0) - (parseFloat(temp.costPrice) || 0)) * (parseInt(temp.quantity) || 1)).toFixed(2)}</p></div>
+                                    </div>
+                                )}
+                                <button type="button" onClick={handleAddManual} className="gold-gradient os-add-item-btn font-usarmy text-xs"><span className="text-lg leading-none">+</span><span>ADICIONAR ITEM AO ORÇAMENTO</span></button>
                             </div>
                         </div>
 
@@ -10891,6 +10772,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
                                         )}
+                                        <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1"><span>Venda: R$ {parseFloat(item.price || 0).toFixed(2)}</span><span>Custo: R$ {getItemCostTotal(item).toFixed(2)}</span><span className="text-green-400">Lucro: R$ {Math.max(0, (parseFloat(item.price || 0) || 0) - getItemCostTotal(item)).toFixed(2)}</span></div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-[#d4af37] font-bold">
@@ -10919,6 +10801,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 ({item.quantity}x R$ {item.unitPrice.toFixed(2)})
                                             </span>
                                         )}
+                                        <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1"><span>Venda: R$ {parseFloat(item.price || 0).toFixed(2)}</span><span>Custo: R$ {getItemCostTotal(item).toFixed(2)}</span><span className="text-green-400">Lucro: R$ {Math.max(0, (parseFloat(item.price || 0) || 0) - getItemCostTotal(item)).toFixed(2)}</span></div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-[#d4af37] font-bold">
@@ -10938,6 +10821,18 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 <p className="text-center text-gray-600 text-xs py-6">Nenhum item adicionado</p>
                             )}
                         </div>
+
+                        {(formData.parts.length > 0 || formData.products.length > 0) && (
+                            <div className="os-card p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+                                <div className="flex items-center gap-2 mb-3"><i data-lucide="chart-no-axes-combined" className="w-4 h-4 text-green-400"></i><p className="text-[10px] font-usarmy text-green-400">MARGEM DE PEÇAS / PRODUTOS</p></div>
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                    <div className="bg-black/30 rounded-xl p-3 border border-white/5"><p className="text-[8px] text-gray-500 font-usarmy">CUSTO</p><p className="text-xs text-red-300 font-bold">R$ {itemCostTotal.toFixed(2)}</p></div>
+                                    <div className="profit-mini-card rounded-xl p-3"><p className="text-[8px] text-gray-500 font-usarmy">LUCRO</p><p className="text-xs text-green-400 font-bold">R$ {itemGrossProfit.toFixed(2)}</p></div>
+                                    <div className="bg-black/30 rounded-xl p-3 border border-[#d4af37]/20"><p className="text-[8px] text-gray-500 font-usarmy">MARGEM</p><p className="text-xs text-[#d4af37] font-bold">{itemMarginPercent}%</p></div>
+                                </div>
+                                {discount > 0 && (<p className="text-[10px] text-gray-500 mt-3">Lucro líquido após desconto estimado: <span className="text-green-400 font-bold">R$ {itemNetMargin.toFixed(2)}</span></p>)}
+                            </div>
+                        )}
 
                         <div className="border-t-2 border-[#d4af37]/30 pt-4 space-y-4">
                             <div className="flex items-center gap-2 mb-2">
@@ -11063,6 +10958,10 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         </span>
                                         <span className="text-red-400 font-bold">- R$ {discount.toFixed(2)}</span>
                                     </div>
+                                )}
+
+                                {(formData.parts.length > 0 || formData.products.length > 0) && (
+                                    <div className="flex justify-between items-center text-sm"><span className="text-green-400">Lucro peças/produtos:</span><span className="text-green-400 font-bold">R$ {itemGrossProfit.toFixed(2)}</span></div>
                                 )}
 
                                 <div className="pt-3 border-t border-[#d4af37]/30 space-y-2">
@@ -12347,72 +12246,17 @@ Alcantara Armeiro - Airsoft Repairs
     </script>
 
     <script>
-        // Service Worker para PWA
+        // Service Worker para PWA OFFLINE REAL
         if ('serviceWorker' in navigator) {
-            const swCode = `
-                const CACHE_NAME = 'alcantara-v6-3';
-                const urlsToCache = [
-                    './',
-                    'https://cdn.tailwindcss.com',
-                    'https://unpkg.com/react@18/umd/react.production.min.js',
-                    'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
-                    'https://unpkg.com/@babel/standalone/babel.min.js',
-                    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-                    'https://unpkg.com/lucide@latest',
-                    'https://i.ibb.co/LFtsfFp/logo.jpg'
-                ];
-
-                self.addEventListener('install', event => {
-                    event.waitUntil(
-                        caches.open(CACHE_NAME)
-                            .then(cache => cache.addAll(urlsToCache))
-                            .catch(err => console.log('Cache failed:', err))
-                    );
-                    self.skipWaiting();
-                });
-
-                self.addEventListener('fetch', event => {
-                    event.respondWith(
-                        caches.match(event.request)
-                            .then(response => {
-                                if (response) {
-                                    return response;
-                                }
-                                return fetch(event.request).catch(() => {
-                                    if (event.request.destination === 'image') {
-                                        return new Response('Offline', { status: 503 });
-                                    }
-                                });
-                            })
-                    );
-                });
-
-                self.addEventListener('activate', event => {
-                    event.waitUntil(
-                        caches.keys().then(cacheNames => {
-                            return Promise.all(
-                                cacheNames.map(cacheName => {
-                                    if (cacheName !== CACHE_NAME) {
-                                        return caches.delete(cacheName);
-                                    }
-                                })
-                            );
-                        })
-                    );
-                    self.clients.claim();
-                });
-            `;
-
-            const blob = new Blob([swCode], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(blob);
-
-            navigator.serviceWorker.register(swUrl)
-                .then(registration => {
-                    console.log('Service Worker registrado:', registration.scope);
-                })
-                .catch(error => {
-                    console.log('Falha ao registrar Service Worker:', error);
-                });
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+                    console.log('Service Worker OFFLINE registrado:', registration.scope);
+                    if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                } catch (error) {
+                    console.log('Falha ao registrar Service Worker OFFLINE:', error);
+                }
+            });
         }
 
         // Inicializa ícones Lucide
@@ -12428,13 +12272,13 @@ Alcantara Armeiro - Airsoft Repairs
             }, 500);
         });
     </script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+
+
+
+
+
+
+
 
 
 <!-- PATCH ALCANTARA: recarrega ícones Lucide após navegação interna da Tech -->
