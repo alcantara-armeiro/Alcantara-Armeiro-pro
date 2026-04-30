@@ -2936,7 +2936,7 @@
             // substitui nós do DOM fora do ciclo do React e isso derruba a tela
             // nas atualizações de contas fixas (salvar / marcar / desmarcar).
 
-            // ── Sync paid orders → bank income ─────────────────────────────────
+            // ── Sync OS payments → bank income ────────────────────────────────
             useEffect(() => {
                 const toIsoFromPtBr = (value) => {
                     const raw = String(value || '').trim();
@@ -2946,54 +2946,106 @@
                     return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
                 };
 
-                const paidOrders = (orders || []).filter(o => o.paymentStatus === 'PAGO');
+                const getOrderSyncId = (order) => String(order?.id || order?.osNumber || '');
+                const getAdvanceValue = (order) => Number((typeof calculateAdvancePayment === 'function' ? calculateAdvancePayment(order) : order?.advancePaymentValue) || 0);
+                const todayIso = new Date().toISOString().slice(0,10);
+
+                const payableOrders = (orders || []).filter(order => {
+                    const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                    const advance = getAdvanceValue(order);
+                    return total > 0 || advance > 0;
+                });
+
+                const advanceOrders = payableOrders.filter(order => getAdvanceValue(order) > 0);
+                const paidOrders = payableOrders.filter(order => order.paymentStatus === 'PAGO');
+                const advanceMap = new Map(advanceOrders.map(order => [getOrderSyncId(order), order]));
+                const paidMap = new Map(paidOrders.map(order => [getOrderSyncId(order), order]));
+
                 setTransactions(prev => {
-                    const next = [...prev];
-                    const existingSyncIds = new Set(next.filter(t => t.syncSource === 'office').map(t => t.syncId));
+                    let next = [...prev];
+
+                    // Remove sincronizações antigas que não existem mais na OS.
+                    next = next.filter(item => {
+                        if (item.syncSource === 'office_advance') return advanceMap.has(String(item.syncId));
+                        if (item.syncSource === 'office') return paidMap.has(String(item.syncId));
+                        return true;
+                    });
+
+                    const upsertSyncedTransaction = (transaction) => {
+                        const idx = next.findIndex(item => item.syncSource === transaction.syncSource && String(item.syncId) === String(transaction.syncId));
+                        if (idx >= 0) next[idx] = { ...next[idx], ...transaction };
+                        else next.unshift(transaction);
+                    };
+
+                    advanceOrders.forEach(order => {
+                        const syncId = getOrderSyncId(order);
+                        if (!syncId) return;
+                        const total = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
+                        const advance = Math.min(getAdvanceValue(order), total || getAdvanceValue(order));
+                        if (advance <= 0) return;
+
+                        const orderDateIso = toIsoFromPtBr(order.date) || todayIso;
+                        const advanceDateIso = String(order.advancePaymentDate || '').trim() || orderDateIso;
+                        const methodLabel = getPaymentMethodLabel(order.advancePaymentMethod || order.paymentMethod || 'PIX');
+
+                        upsertSyncedTransaction({
+                            id: 'sync_advance_' + syncId,
+                            syncId,
+                            syncSource: 'office_advance',
+                            area: 'oficina',
+                            type: 'entrada',
+                            category: 'Sinal de cliente',
+                            description: `#${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                            value: advance,
+                            isPersonalExpense: false,
+                            date: advanceDateIso,
+                            sourceOrderDate: orderDateIso,
+                            paymentDate: advanceDateIso,
+                            realProfit: advance,
+                            realCost: 0,
+                            realMargin: 100,
+                            obs: `Auto-importado da oficina • Sinal do cliente via ${methodLabel}`
+                        });
+                    });
+
                     paidOrders.forEach(order => {
-                        const syncId = String(order.id || order.osNumber);
+                        const syncId = getOrderSyncId(order);
+                        if (!syncId) return;
                         const total  = Number((typeof calculateTotal === 'function' ? calculateTotal(order) : 0) || 0);
-                        const realProfit = Number((typeof calculateOrderRealProfit === 'function' ? calculateOrderRealProfit(order) : total) || 0);
-                        const realCost = Math.max(0, total - realProfit);
-                        const orderDateIso = toIsoFromPtBr(order.date) || new Date().toISOString().slice(0,10);
+                        const advance = Math.min(getAdvanceValue(order), total);
+                        const finalValue = Math.max(0, total - advance);
+                        if (finalValue <= 0) return;
+
+                        const realProfitTotal = Number((typeof calculateOrderRealProfit === 'function' ? calculateOrderRealProfit(order) : total) || 0);
+                        const finalProfit = Math.max(0, realProfitTotal - advance);
+                        const realCost = Math.max(0, finalValue - finalProfit);
+                        const orderDateIso = toIsoFromPtBr(order.date) || todayIso;
                         const paymentDateIso = String(order.paymentDate || '').trim() || orderDateIso;
-                        if (!total || existingSyncIds.has(syncId)) return;
-                        next.unshift({
-                            id: 'sync_' + syncId, syncId, syncSource: 'office',
-                            area: 'oficina', type: 'entrada', category: 'Serviço',
-                            description: `OS #${order.osNumber} — ${order.customerName || 'Cliente'}`,
-                            value: total, isPersonalExpense: false,
+                        const hasAdvance = advance > 0;
+
+                        upsertSyncedTransaction({
+                            id: 'sync_' + syncId,
+                            syncId,
+                            syncSource: 'office',
+                            area: 'oficina',
+                            type: 'entrada',
+                            category: hasAdvance ? 'Pago' : 'Serviço',
+                            description: `#${order.osNumber} — ${order.customerName || 'Cliente'}`,
+                            value: finalValue,
+                            isPersonalExpense: false,
                             date: paymentDateIso,
                             sourceOrderDate: orderDateIso,
                             paymentDate: paymentDateIso,
-                            realProfit,
+                            realProfit: finalProfit,
                             realCost,
-                            realMargin: total > 0 ? (realProfit / total) * 100 : 0,
-                            obs: `Auto-importado da oficina • Lucro real: ${money(realProfit)}`
+                            realMargin: finalValue > 0 ? (finalProfit / finalValue) * 100 : 0,
+                            obs: hasAdvance
+                                ? `Auto-importado da oficina • Saldo após sinal de ${money(advance)} • Lucro real: ${money(finalProfit)}`
+                                : `Auto-importado da oficina • Lucro real: ${money(finalProfit)}`
                         });
                     });
-                    const paidMap = new Map(paidOrders.map(o => [String(o.id||o.osNumber), o]));
-                    return next
-                        .filter(item => item.syncSource !== 'office' || paidMap.has(String(item.syncId)))
-                        .map(item => {
-                            if (item.syncSource !== 'office') return item;
-                            const o = paidMap.get(String(item.syncId));
-                            const total = Number((typeof calculateTotal === 'function' ? calculateTotal(o) : item.value)||item.value);
-                            const realProfit = Number((typeof calculateOrderRealProfit === 'function' ? calculateOrderRealProfit(o) : total) || 0);
-                            const realCost = Math.max(0, total - realProfit);
-                            const orderDateIso = toIsoFromPtBr(o.date) || item.sourceOrderDate || item.date;
-                            const paymentDateIso = String(o.paymentDate || '').trim() || item.paymentDate || orderDateIso || item.date;
-                            return { ...item, value: total,
-                                description: `OS #${o.osNumber} — ${o.customerName||'Cliente'}`,
-                                date: paymentDateIso,
-                                sourceOrderDate: orderDateIso,
-                                paymentDate: paymentDateIso,
-                                realProfit,
-                                realCost,
-                                realMargin: total > 0 ? (realProfit / total) * 100 : 0,
-                                obs: `Auto-importado da oficina • Lucro real: ${money(realProfit)}`
-                            };
-                        });
+
+                    return normalizeBankTransactions(next);
                 });
             }, [orders]);
 
@@ -5431,6 +5483,11 @@
                                 {filteredTransactions.map(t => {
                                     const isPE = t.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(t.category);
                                     const catIcon = CAT_ICONS[t.category] || 'circle-dot';
+                                    const displayDescription = String(t.description || '')
+                                        .replace(/^Sinal\s+OS\s+(#?\d+)/i, '#$1')
+                                        .replace(/^Saldo\s+OS\s+(#?\d+)/i, '#$1')
+                                        .replace(/^OS\s+(#?\d+)/i, '#$1')
+                                        .replace(/^##/, '#');
                                     return (
                                         <div key={t.id} className="os-card p-3 rounded-xl border border-white/5">
                                             <div className="flex items-start gap-3">
@@ -5453,7 +5510,7 @@
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold border text-emerald-400 bg-emerald-500/10 border-emerald-500/30">FIXA</span>
                                                         )}
                                                     </div>
-                                                    <p className="text-sm font-semibold text-white truncate">{t.description}</p>
+                                                    <p className="text-sm font-semibold text-white truncate">{displayDescription}</p>
                                                     <p className="text-[10px] text-gray-500 mt-0.5">{t.date?.split('-').reverse().join('/')} {t.obs?`• ${t.obs}`:''}</p>
                                                 </div>
                                                 <div className="text-right flex-shrink-0">
@@ -10093,6 +10150,9 @@
             const [type, setType] = useState('service');
             const [selectedCatalogId, setSelectedCatalogId] = useState('');
             const [customerInternalNote, setCustomerInternalNote] = useState('');
+            const [openCustomerHistoryPanel, setOpenCustomerHistoryPanel] = useState(false);
+            const [openEquipmentHistoryPanel, setOpenEquipmentHistoryPanel] = useState(false);
+            const [openOperationalProfilePanel, setOpenOperationalProfilePanel] = useState(false);
 // Geração automática do número da OS (apenas para OS NOVA)
             useEffect(() => {
                 if (order) return; // edição: mantém o número existente
@@ -10455,7 +10515,15 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                     {customerHistory.hasHistory && (
                         <div className="os-card p-4 rounded-xl space-y-3 border border-[#d4af37]/10">
-                            <p className="text-[10px] font-usarmy text-[#d4af37] text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
+                            <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-3">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-usarmy text-[#d4af37]">CLIENTE JÁ CADASTRADO</p>
+                                    <p className="text-[9px] text-gray-500 truncate">Dados ocultos para manter a OS limpa</p>
+                                </div>
+                                <span className="px-2 py-1 rounded-full bg-[#d4af37]/10 border border-[#d4af37]/20 text-[#f2d06a] text-[8px] font-usarmy whitespace-nowrap">
+                                    {customerHistory.totalOrders} OS
+                                </span>
+                            </div>
 
                             <div className="grid grid-cols-2 gap-2">
                                 <button
@@ -10468,60 +10536,112 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => onOpenEquipmentHistory?.()}
-                                    className="p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border border-[#d4af37]/20 text-[#d4af37] bg-black/20"
+                                    onClick={() => setOpenCustomerHistoryPanel(prev => !prev)}
+                                    className={`p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border ${openCustomerHistoryPanel ? 'border-[#d4af37]/50 bg-[#d4af37]/10 text-[#f2d06a]' : 'border-[#d4af37]/20 text-[#d4af37] bg-black/20'}`}
+                                >
+                                    <i data-lucide="history" className="w-4 h-4"></i>
+                                    HIST. CLIENTE
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setOpenEquipmentHistoryPanel(prev => !prev)}
+                                    className={`p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border ${openEquipmentHistoryPanel ? 'border-[#d4af37]/50 bg-[#d4af37]/10 text-[#f2d06a]' : 'border-[#d4af37]/20 text-[#d4af37] bg-black/20'}`}
                                 >
                                     <i data-lucide="database" className="w-4 h-4"></i>
                                     HIST. EQUIP.
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setOpenOperationalProfilePanel(prev => !prev)}
+                                    className={`p-3 rounded-lg font-usarmy text-[10px] flex items-center justify-center gap-2 border ${openOperationalProfilePanel ? 'border-[#d4af37]/50 bg-[#d4af37]/10 text-[#f2d06a]' : 'border-[#d4af37]/20 text-[#d4af37] bg-black/20'}`}
+                                >
+                                    <i data-lucide="activity" className="w-4 h-4"></i>
+                                    PERFIL OP.
+                                </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
-                                    <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
-                                    <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
-                                    <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
-                                    <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
-                                </div>
-                                <div className="bg-black/25 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
-                                    <p className="text-[10px] text-white leading-tight">{customerHistory.lastDefect || '—'}</p>
-                                </div>
-                            </div>
-
-                            {customerHistory.lastOrders.length > 0 && (
-                                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
-                                    <p className="text-[8px] text-gray-500 mb-2">ÚLTIMAS MOVIMENTAÇÕES</p>
-                                    <div className="space-y-2">
-                                        {customerHistory.lastOrders.map((historyOrder) => (
-                                            <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px]">
-                                                <div className="min-w-0">
-                                                    <p className="text-white truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
-                                                    <p className="text-gray-500 truncate">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
-                                                </div>
-                                                <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
-                                            </div>
-                                        ))}
+                            {openCustomerHistoryPanel && (
+                                <div className="animate-fadeIn space-y-3 bg-black/20 rounded-xl p-3 border border-white/5">
+                                    <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">HISTÓRICO DO CLIENTE</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TOTAL DE OS</p>
+                                            <p className="text-[10px] text-white font-bold">{customerHistory.totalOrders}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TICKET MÉDIO</p>
+                                            <p className="text-[10px] text-[#d4af37] font-bold">R$ {customerHistory.averageTicket.toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">TOTAL JÁ PAGO</p>
+                                            <p className="text-[10px] text-green-400 font-bold">R$ {customerHistory.totalPaid.toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">OS PENDENTES</p>
+                                            <p className={`text-[10px] font-bold ${customerHistory.pendingOrders > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>{customerHistory.pendingOrders}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO EQUIPAMENTO</p>
+                                            <p className="text-[10px] text-white leading-tight">{customerHistory.lastEquipment || '—'}</p>
+                                        </div>
+                                        <div className="bg-black/25 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-1">ÚLTIMO DEFEITO</p>
+                                            <p className="text-[10px] text-white leading-tight">{customerHistory.lastDefect || '—'}</p>
+                                        </div>
                                     </div>
+
+                                    {customerHistory.lastOrders.length > 0 && (
+                                        <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                                            <p className="text-[8px] text-gray-500 mb-2">ÚLTIMAS MOVIMENTAÇÕES</p>
+                                            <div className="space-y-2">
+                                                {customerHistory.lastOrders.map((historyOrder) => (
+                                                    <div key={historyOrder.id} className="flex items-center justify-between gap-3 text-[9px]">
+                                                        <div className="min-w-0">
+                                                            <p className="text-white truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
+                                                            <p className="text-gray-500 truncate">{historyOrder.date || '-'} • {OPERATIONAL_STAGE_LABELS[normalizeOperationalStatus(historyOrder.operationalStatus)] || 'ENTRADA'}</p>
+                                                        </div>
+                                                        <p className="text-[#d4af37] font-bold whitespace-nowrap">R$ {calculateTotal(historyOrder).toFixed(2)}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-                            {customerOperationalProfile && (
-                                <div className="bg-black/20 rounded-lg p-3 border border-[#d4af37]/10 space-y-3">
+                            {openEquipmentHistoryPanel && (
+                                <div className="animate-fadeIn bg-black/20 rounded-xl p-3 border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+                                        <p className="text-[8px] text-[#d4af37] font-usarmy">HISTÓRICO DO EQUIPAMENTO</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenEquipmentHistory?.()}
+                                            className="px-3 py-2 rounded-lg border border-[#d4af37]/20 text-[#d4af37] bg-black/20 font-usarmy text-[8px]"
+                                        >
+                                            ABRIR BANCO
+                                        </button>
+                                    </div>
+                                    {relatedEquipmentOrders.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {relatedEquipmentOrders.map((historyOrder) => (
+                                                <div key={historyOrder.id} className="bg-black/25 rounded-lg p-3 border border-white/5 text-[9px]">
+                                                    <div className="flex justify-between gap-3 mb-1">
+                                                        <p className="text-white font-bold truncate">#{historyOrder.osNumber} • {historyOrder.equipment || '-'}</p>
+                                                        <p className="text-[#d4af37] whitespace-nowrap">{historyOrder.date || '-'}</p>
+                                                    </div>
+                                                    <p className="text-gray-500 leading-tight">Defeito: {historyOrder.defects || '—'}</p>
+                                                    <p className="text-gray-500 leading-tight">Laudo: {historyOrder.techReport || '—'}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-[10px] text-gray-500 text-center py-3">Nenhum histórico encontrado para este mesmo equipamento.</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {openOperationalProfilePanel && customerOperationalProfile && (
+                                <div className="animate-fadeIn bg-black/20 rounded-xl p-3 border border-[#d4af37]/10 space-y-3">
                                     <p className="text-[8px] text-[#d4af37] font-usarmy text-center border-b border-white/5 pb-2">PERFIL OPERACIONAL DO CLIENTE</p>
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -10574,21 +10694,21 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                             </div>
                                         </div>
                                     )}
+
+                                    <div className="space-y-2 pt-2 border-t border-white/5">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
+                                            <span className="text-[8px] text-gray-600">uso interno</span>
+                                        </div>
+                                        <textarea
+                                            className="w-full p-3 rounded-xl h-20 resize-none text-sm"
+                                            placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
+                                            value={customerInternalNote}
+                                            onChange={e => setCustomerInternalNote(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
                             )}
-
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[9px] font-usarmy text-gray-400">OBSERVAÇÃO INTERNA DO CLIENTE</p>
-                                    <span className="text-[8px] text-gray-600">uso interno</span>
-                                </div>
-                                <textarea
-                                    className="w-full p-3 rounded-xl h-20 resize-none text-sm"
-                                    placeholder="Ex.: cliente aprova rápido, sempre traz AEG, costuma pedir urgência..."
-                                    value={customerInternalNote}
-                                    onChange={e => setCustomerInternalNote(e.target.value)}
-                                />
-                            </div>
                         </div>
                     )}
 
@@ -10647,114 +10767,6 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                             ))}
                         </select>
                         <p className="text-[8px] text-gray-500">A etapa operacional escolhida já alimenta os cards do monitoramento operacional na dashboard.</p>
-                    </div>
-
-                    <div>
-                        <p className="text-[10px] font-usarmy text-gray-500 mb-3">STATUS DE PAGAMENTO</p>
-                        <div className="grid grid-cols-2 gap-2">
-                            <button 
-                                onClick={() => setFormData({...formData, paymentStatus: 'PAGO'})}
-                                className={`p-3 rounded-lg text-[9px] font-usarmy border transition-all flex items-center justify-center gap-2 ${
-                                    formData.paymentStatus === 'PAGO' 
-                                        ? 'border-green-500 text-green-500 bg-green-500/10' 
-                                        : 'border-white/5 text-gray-500'
-                                }`}
-                            >
-                                <i data-lucide="check-circle" className="w-4 h-4"></i>
-                                PAGO
-                            </button>
-                            <button 
-                                onClick={() => setFormData({...formData, paymentStatus: 'PENDENTE'})}
-                                className={`p-3 rounded-lg text-[9px] font-usarmy border transition-all flex items-center justify-center gap-2 ${
-                                    formData.paymentStatus === 'PENDENTE' 
-                                        ? 'border-yellow-500 text-yellow-500 bg-yellow-500/10' 
-                                        : 'border-white/5 text-gray-500'
-                                }`}
-                            >
-                                <i data-lucide="clock" className="w-4 h-4"></i>
-                                PENDENTE
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="os-card p-5 rounded-xl space-y-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <p className="text-[10px] font-usarmy text-[#d4af37]">SINAL DO CLIENTE</p>
-                                <p className="text-[10px] text-gray-500 mt-1">Use quando o cliente pagar uma entrada antes da quitação.</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => updateForm({
-                                    hasAdvancePayment: !hasAdvancePaymentActive,
-                                    advancePaymentValue: hasAdvancePaymentActive ? '' : formData.advancePaymentValue,
-                                    advancePaymentDate: hasAdvancePaymentActive ? '' : (formData.advancePaymentDate || new Date().toISOString().slice(0,10)),
-                                    advancePaymentMethod: hasAdvancePaymentActive ? 'PIX' : (formData.advancePaymentMethod || formData.paymentMethod || 'PIX')
-                                })}
-                                className={`px-4 py-3 rounded-xl text-[10px] font-usarmy border transition-all ${
-                                    hasAdvancePaymentActive ? 'gold-gradient border-[#d4af37]' : 'bg-white/5 text-gray-400 border-white/10'
-                                }`}
-                            >
-                                {hasAdvancePaymentActive ? 'COM SINAL' : 'SEM SINAL'}
-                            </button>
-                        </div>
-
-                        {hasAdvancePaymentActive && (
-                            <div className="space-y-3 animate-fadeIn">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">VALOR DO SINAL</label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            className="w-full p-4 rounded-xl text-sm"
-                                            placeholder="R$ 0,00"
-                                            value={formData.advancePaymentValue || ''}
-                                            onChange={e => updateForm({ advancePaymentValue: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">DATA DO SINAL</label>
-                                        <input
-                                            type="date"
-                                            className="w-full p-4 rounded-xl text-sm"
-                                            value={formData.advancePaymentDate || ''}
-                                            onChange={e => updateForm({ advancePaymentDate: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <p className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">FORMA DE PAGAMENTO DO SINAL</p>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {PAYMENT_METHOD_OPTIONS.map(option => (
-                                            <button
-                                                key={`advance_${option.key}`}
-                                                type="button"
-                                                onClick={() => updateForm({ advancePaymentMethod: option.key })}
-                                                className={`p-3 text-[10px] font-bold rounded-lg transition-all ${
-                                                    (formData.advancePaymentMethod || 'PIX') === option.key ? 'gold-gradient' : 'bg-white/5 text-gray-400'
-                                                }`}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="bg-black/30 rounded-xl p-4 border border-white/5 grid grid-cols-2 gap-3">
-                                    <div>
-                                        <p className="text-[10px] text-gray-500 tracking-[0.08em]">SINAL</p>
-                                        <p className="font-usarmy text-green-400 text-base mt-1">R$ {calculateAdvancePayment(formData).toFixed(2)}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] text-gray-500 tracking-[0.08em]">RESTANTE</p>
-                                        <p className="font-usarmy text-[#d4af37] text-base mt-1">R$ {calculateRemainingPayment(formData).toFixed(2)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     <div className="os-card p-5 rounded-xl space-y-5">
@@ -11037,6 +11049,123 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="border-t border-white/5 pt-4 space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <i data-lucide="credit-card" className="w-4 h-4 text-[#d4af37]"></i>
+                                    <p className="text-[10px] font-usarmy text-[#d4af37]">STATUS E SINAL DO PAGAMENTO</p>
+                                </div>
+
+                                <div className="rounded-xl p-4 border border-white/10 bg-black/20 space-y-3">
+                                    <p className="text-[10px] font-usarmy text-gray-500">STATUS DE PAGAMENTO</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, paymentStatus: 'PAGO'})}
+                                            className={`p-3 rounded-lg text-[9px] font-usarmy border transition-all flex items-center justify-center gap-2 ${
+                                                formData.paymentStatus === 'PAGO' 
+                                                    ? 'border-green-500 text-green-500 bg-green-500/10' 
+                                                    : 'border-white/5 text-gray-500 bg-white/5'
+                                            }`}
+                                        >
+                                            <i data-lucide="check-circle" className="w-4 h-4"></i>
+                                            PAGO
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, paymentStatus: 'PENDENTE'})}
+                                            className={`p-3 rounded-lg text-[9px] font-usarmy border transition-all flex items-center justify-center gap-2 ${
+                                                formData.paymentStatus === 'PENDENTE' 
+                                                    ? 'border-yellow-500 text-yellow-500 bg-yellow-500/10' 
+                                                    : 'border-white/5 text-gray-500 bg-white/5'
+                                            }`}
+                                        >
+                                            <i data-lucide="clock" className="w-4 h-4"></i>
+                                            PENDENTE
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl p-4 border border-[#d4af37]/15 bg-[#d4af37]/5 space-y-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[10px] font-usarmy text-[#d4af37]">SINAL DO CLIENTE</p>
+                                            <p className="text-[10px] text-gray-500 mt-1">Entrada vinculada ao pagamento da OS.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => updateForm({
+                                                hasAdvancePayment: !hasAdvancePaymentActive,
+                                                advancePaymentValue: hasAdvancePaymentActive ? '' : formData.advancePaymentValue,
+                                                advancePaymentDate: hasAdvancePaymentActive ? '' : (formData.advancePaymentDate || new Date().toISOString().slice(0,10)),
+                                                advancePaymentMethod: hasAdvancePaymentActive ? 'PIX' : (formData.advancePaymentMethod || formData.paymentMethod || 'PIX')
+                                            })}
+                                            className={`px-4 py-3 rounded-xl text-[10px] font-usarmy border transition-all ${
+                                                hasAdvancePaymentActive ? 'gold-gradient border-[#d4af37]' : 'bg-white/5 text-gray-400 border-white/10'
+                                            }`}
+                                        >
+                                            {hasAdvancePaymentActive ? 'COM SINAL' : 'SEM SINAL'}
+                                        </button>
+                                    </div>
+
+                                    {hasAdvancePaymentActive && (
+                                        <div className="space-y-3 animate-fadeIn">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">VALOR DO SINAL</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        className="w-full p-4 rounded-xl text-sm"
+                                                        placeholder="R$ 0,00"
+                                                        value={formData.advancePaymentValue || ''}
+                                                        onChange={e => updateForm({ advancePaymentValue: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">DATA DO SINAL</label>
+                                                    <input
+                                                        type="date"
+                                                        className="w-full p-4 rounded-xl text-sm"
+                                                        value={formData.advancePaymentDate || ''}
+                                                        onChange={e => updateForm({ advancePaymentDate: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">FORMA DE PAGAMENTO DO SINAL</p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {PAYMENT_METHOD_OPTIONS.map(option => (
+                                                        <button
+                                                            key={`advance_${option.key}`}
+                                                            type="button"
+                                                            onClick={() => updateForm({ advancePaymentMethod: option.key })}
+                                                            className={`p-3 text-[10px] font-bold rounded-lg transition-all ${
+                                                                (formData.advancePaymentMethod || 'PIX') === option.key ? 'gold-gradient' : 'bg-white/5 text-gray-400'
+                                                            }`}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-black/30 rounded-xl p-4 border border-white/5 grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <p className="text-[10px] text-gray-500 tracking-[0.08em]">SINAL</p>
+                                                    <p className="font-usarmy text-green-400 text-base mt-1">R$ {calculateAdvancePayment(formData).toFixed(2)}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-gray-500 tracking-[0.08em]">RESTANTE</p>
+                                                    <p className="font-usarmy text-[#d4af37] text-base mt-1">R$ {calculateRemainingPayment(formData).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="flex items-center gap-2 mb-2">
                                 <i data-lucide="tag" className="w-4 h-4 text-[#d4af37]"></i>
