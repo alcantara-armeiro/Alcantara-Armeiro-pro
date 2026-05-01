@@ -941,6 +941,11 @@
                 installmentIndex,
                 installmentValue: Number(item.installmentValue || item.value || 0),
                 installmentGroupId: String(item.installmentGroupId || '').trim(),
+                isRecurring: item.isRecurring === true,
+                recurringGroupId: String(item.recurringGroupId || '').trim(),
+                recurringIndex: Math.max(parseInt(item.recurringIndex || 1, 10) || 1, 1),
+                recurringActive: item.recurringActive !== false,
+                recurrenceMonths: Math.max(parseInt(item.recurrenceMonths || 72, 10) || 72, 1),
                 obs: String(item.obs || '').trim()
             };
         };
@@ -3430,7 +3435,10 @@
                 obs: '',
                 isInstallment: false,
                 installmentCount: '2',
-                installmentGroupId: ''
+                installmentGroupId: '',
+                isRecurring: false,
+                recurrenceMonths: '72',
+                recurringGroupId: ''
             };
             const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) || null, [cards, selectedCardId]);
             const [cardForm, setCardForm] = useState(emptyCardForm);
@@ -3517,10 +3525,43 @@
 
             const buildCardEntriesFromForm = (form, card) => {
                 const totalValue = Math.round((Number(form.totalValue || 0) + Number.EPSILON) * 100) / 100;
-                const installmentCount = form.isInstallment ? Math.max(parseInt(form.installmentCount || 1, 10) || 1, 2) : 1;
-                const values = splitAmountAcrossInstallments(totalValue, installmentCount);
                 const purchaseDate = normalizeBankDate(form.date, isoToday());
                 const timestamp = Date.now();
+                const isRecurring = form.isRecurring === true;
+
+                if (isRecurring) {
+                    const recurrenceMonths = Math.min(Math.max(parseInt(form.recurrenceMonths || 72, 10) || 72, 1), 120);
+                    const recurringGroupId = form.recurringGroupId || `card_recurring_${timestamp}`;
+                    return Array.from({ length: recurrenceMonths }, (_, index) => {
+                        const recurringDate = shiftIsoDateMonths(purchaseDate, index);
+                        return {
+                            id: `card_entry_${timestamp}_rec_${index}_${Math.random().toString(36).slice(2,8)}`,
+                            cardId: selectedCardId,
+                            area: form.area === 'oficina' ? 'oficina' : 'pessoal',
+                            category: form.category,
+                            description: form.description.trim(),
+                            value: totalValue,
+                            totalPurchaseValue: totalValue,
+                            date: recurringDate,
+                            purchaseDate,
+                            invoiceMonth: getCardInvoiceMonth({ date: recurringDate }, card),
+                            obs: form.obs || '',
+                            isInstallment: false,
+                            installmentCount: 1,
+                            installmentIndex: 1,
+                            installmentValue: totalValue,
+                            installmentGroupId: '',
+                            isRecurring: true,
+                            recurringGroupId,
+                            recurringIndex: index + 1,
+                            recurringActive: true,
+                            recurrenceMonths
+                        };
+                    });
+                }
+
+                const installmentCount = form.isInstallment ? Math.max(parseInt(form.installmentCount || 1, 10) || 1, 2) : 1;
+                const values = splitAmountAcrossInstallments(totalValue, installmentCount);
                 const groupId = installmentCount > 1 ? (form.installmentGroupId || `card_installment_${timestamp}`) : '';
                 return values.map((installmentValue, index) => {
                     const installmentDate = shiftIsoDateMonths(purchaseDate, index);
@@ -3540,7 +3581,12 @@
                         installmentCount,
                         installmentIndex: index + 1,
                         installmentValue,
-                        installmentGroupId: groupId
+                        installmentGroupId: groupId,
+                        isRecurring: false,
+                        recurringGroupId: '',
+                        recurringIndex: 1,
+                        recurringActive: true,
+                        recurrenceMonths: 1
                     };
                 });
             };
@@ -3620,6 +3666,10 @@
                 }
                 const totalValue = Number(cardEntryForm.totalValue || 0);
                 const installmentCount = cardEntryForm.isInstallment ? Math.max(parseInt(cardEntryForm.installmentCount || 1, 10) || 1, 2) : 1;
+                if (cardEntryForm.isRecurring && cardEntryForm.isInstallment) {
+                    showToast('Escolha parcelado OU recorrente', 'warning');
+                    return;
+                }
                 if (!cardEntryForm.description.trim() || totalValue <= 0 || !cardEntryForm.date) {
                     showToast('Preencha descrição, valor total e data da compra', 'warning');
                     return;
@@ -3631,9 +3681,10 @@
                 const payloads = buildCardEntriesFromForm(cardEntryForm, selectedCardData);
                 const currentEditingEntry = cardEntries.find(entry => entry.id === editingCardEntryId);
                 const editingGroupId = currentEditingEntry?.installmentGroupId || cardEntryForm.installmentGroupId || '';
+                const editingRecurringGroupId = currentEditingEntry?.recurringGroupId || cardEntryForm.recurringGroupId || '';
                 setCardEntries(prev => {
                     const filtered = editingCardEntryId
-                        ? prev.filter(entry => editingGroupId ? entry.installmentGroupId !== editingGroupId : entry.id !== editingCardEntryId)
+                        ? prev.filter(entry => editingRecurringGroupId ? entry.recurringGroupId !== editingRecurringGroupId : (editingGroupId ? entry.installmentGroupId !== editingGroupId : entry.id !== editingCardEntryId))
                         : prev;
                     return [...payloads, ...filtered];
                 });
@@ -3642,20 +3693,26 @@
                 setShowCardEntryForm(false);
                 showToast(
                     editingCardEntryId
-                        ? (payloads.length > 1 ? '✅ Parcelamento atualizado' : '✅ Lançamento do cartão atualizado')
-                        : (payloads.length > 1 ? '✅ Gasto parcelado salvo' : '✅ Gasto do cartão salvo'),
+                        ? (cardEntryForm.isRecurring ? '✅ Recorrência atualizada' : (payloads.length > 1 ? '✅ Parcelamento atualizado' : '✅ Lançamento do cartão atualizado'))
+                        : (cardEntryForm.isRecurring ? '✅ Compra recorrente salva' : (payloads.length > 1 ? '✅ Gasto parcelado salvo' : '✅ Gasto do cartão salvo')),
                     'success'
                 );
             };
 
             const editCardEntry = (entry) => {
-                const groupEntries = entry.installmentGroupId
+                const groupEntries = entry.recurringGroupId
                     ? cardEntries
-                        .filter(item => item.installmentGroupId === entry.installmentGroupId)
-                        .sort((a,b) => Number(a.installmentIndex || 1) - Number(b.installmentIndex || 1))
-                    : [entry];
-                const baseEntry = groupEntries.find(item => Number(item.installmentIndex || 1) === 1) || groupEntries[0] || entry;
-                const totalPurchaseValue = Number(baseEntry.totalPurchaseValue || groupEntries.reduce((sum, item) => sum + Number(item.value || 0), 0));
+                        .filter(item => item.recurringGroupId === entry.recurringGroupId)
+                        .sort((a,b) => Number(a.recurringIndex || 1) - Number(b.recurringIndex || 1))
+                    : (entry.installmentGroupId
+                        ? cardEntries
+                            .filter(item => item.installmentGroupId === entry.installmentGroupId)
+                            .sort((a,b) => Number(a.installmentIndex || 1) - Number(b.installmentIndex || 1))
+                        : [entry]);
+                const baseEntry = groupEntries.find(item => Number(item.installmentIndex || 1) === 1 || Number(item.recurringIndex || 1) === 1) || groupEntries[0] || entry;
+                const totalPurchaseValue = entry.recurringGroupId
+                    ? Number(baseEntry.value || baseEntry.totalPurchaseValue || 0)
+                    : Number(baseEntry.totalPurchaseValue || groupEntries.reduce((sum, item) => sum + Number(item.value || 0), 0));
                 const area = baseEntry.area || 'pessoal';
                 const installmentCount = Math.max(parseInt(baseEntry.installmentCount || groupEntries.length || 1, 10) || 1, 1);
                 setEditingCardEntryId(entry.id);
@@ -3666,9 +3723,12 @@
                     totalValue: totalPurchaseValue ? String(totalPurchaseValue.toFixed(2)) : '',
                     date: baseEntry.purchaseDate || baseEntry.date || isoToday(),
                     obs: baseEntry.obs || '',
-                    isInstallment: installmentCount > 1,
+                    isInstallment: !baseEntry.isRecurring && installmentCount > 1,
                     installmentCount: String(installmentCount > 1 ? installmentCount : 2),
-                    installmentGroupId: baseEntry.installmentGroupId || ''
+                    installmentGroupId: baseEntry.installmentGroupId || '',
+                    isRecurring: baseEntry.isRecurring === true,
+                    recurrenceMonths: String(baseEntry.recurrenceMonths || groupEntries.length || 72),
+                    recurringGroupId: baseEntry.recurringGroupId || ''
                 });
                 setShowCardEntryForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3676,13 +3736,14 @@
 
             const removeCardEntry = (entryId) => {
                 const targetEntry = cardEntries.find(entry => entry.id === entryId);
+                const recurringGroupId = targetEntry?.recurringGroupId || '';
                 const groupId = targetEntry?.installmentGroupId || '';
-                setCardEntries(prev => groupId
-                    ? prev.filter(entry => entry.installmentGroupId !== groupId)
-                    : prev.filter(entry => entry.id !== entryId)
+                setCardEntries(prev => recurringGroupId
+                    ? prev.filter(entry => entry.recurringGroupId !== recurringGroupId)
+                    : (groupId ? prev.filter(entry => entry.installmentGroupId !== groupId) : prev.filter(entry => entry.id !== entryId))
                 );
                 setConfirmDeleteCardEntry(null);
-                showToast(groupId ? '🗑️ Parcelamento removido' : '🗑️ Lançamento do cartão removido', 'success');
+                showToast(recurringGroupId ? '🗑️ Recorrência cancelada/removida' : (groupId ? '🗑️ Parcelamento removido' : '🗑️ Lançamento do cartão removido'), 'success');
             };
 
             const selectedCardEntries = useMemo(() => cardEntries
@@ -5595,6 +5656,38 @@
                                                     </div>
                                                 )}
                                             </div>
+                                            <div className="os-card p-3 rounded-xl mb-4" style={{border:'1px solid rgba(255,255,255,0.08)'}}>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="font-usarmy text-white text-xs">COMPRA RECORRENTE MENSAL</p>
+                                                        <p className="text-[9px] text-gray-500 mt-1">Streaming, assinatura ou cobrança mensal até cancelar.</p>
+                                                    </div>
+                                                    <button type="button"
+                                                        onClick={()=>setCardEntryForm(prev=>({...prev,isRecurring:!prev.isRecurring,isInstallment:false}))}
+                                                        className="px-3 py-2 rounded-xl border font-usarmy text-[10px]"
+                                                        style={{
+                                                            color: cardEntryForm.isRecurring ? '#d4af37' : '#9ca3af',
+                                                            borderColor: cardEntryForm.isRecurring ? 'rgba(212,175,55,0.35)' : 'rgba(255,255,255,0.1)',
+                                                            background: cardEntryForm.isRecurring ? 'rgba(212,175,55,0.08)' : 'rgba(255,255,255,0.03)'
+                                                        }}>
+                                                        {cardEntryForm.isRecurring ? 'ATIVA' : 'NÃO'}
+                                                    </button>
+                                                </div>
+                                                {cardEntryForm.isRecurring && (
+                                                    <div className="grid grid-cols-2 gap-3 mt-3">
+                                                        <div>
+                                                            <p className="text-[9px] text-gray-500 font-mono mb-1">GERAR POR MESES</p>
+                                                            <input type="number" min="1" max="120" value={cardEntryForm.recurrenceMonths}
+                                                                onChange={e=>setCardEntryForm(prev=>({...prev,recurrenceMonths:e.target.value.replace(/\D/g,'').slice(0,3)}))}
+                                                                className="w-full p-3 rounded-xl text-sm" />
+                                                        </div>
+                                                        <div className="rounded-xl p-3 flex flex-col justify-center" style={{background:'rgba(212,175,55,0.06)', border:'1px solid rgba(212,175,55,0.12)'}}>
+                                                            <p className="text-[9px] text-gray-500 font-mono">VALOR MENSAL</p>
+                                                            <p className="font-usarmy text-[#d4af37] text-sm mt-1">{money(Number(cardEntryForm.totalValue || 0))}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <p className="text-[9px] text-gray-500 font-mono mb-1">OBSERVAÇÃO (opcional)</p>
                                             <input type="text" value={cardEntryForm.obs} placeholder="Detalhes extras..."
                                                 onChange={e=>setCardEntryForm(prev=>({...prev,obs:e.target.value}))}
@@ -5635,12 +5728,14 @@
                                                             <AreaBadge area={entry.area} size="xs" />
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{entry.category}</span>
                                                             {entry.isInstallment && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20">{entry.installmentIndex}/{entry.installmentCount}</span>}
+                                                            {entry.isRecurring && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20">RECORRENTE</span>}
                                                         </div>
                                                         <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
                                                         <p className="text-[10px] text-gray-500 mt-0.5">
                                                             {entry.date?.split('-').reverse().join('/')}
                                                             {entry.isInstallment ? ` • Parcela ${entry.installmentIndex}/${entry.installmentCount}` : ''}
-                                                            {entry.purchaseDate && entry.purchaseDate !== entry.date ? ` • Compra ${entry.purchaseDate.split('-').reverse().join('/')}` : ''}
+                                                            {entry.isRecurring ? ` • Recorrente mensal` : ''}
+                                                            {entry.purchaseDate && entry.purchaseDate !== entry.date ? ` • Início ${entry.purchaseDate.split('-').reverse().join('/')}` : ''}
                                                             {entry.obs ? ` • ${entry.obs}` : ''}
                                                         </p>
                                                     </div>
