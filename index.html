@@ -2649,7 +2649,16 @@
                 const set = new Set([currentYM]);
                 transactions.forEach(t => { const ym = String(normalizeBankDate(t?.date || '')).slice(0,7); if(/^\d{4}-\d{2}$/.test(ym)) set.add(ym); });
                 fixedBills.forEach(b => { if (isIsoDate(b?.date)) set.add(b.date.slice(0,7)); });
-                // Gerar todos os meses desde Jan/2024 até o maior mês encontrado (inclusive contas futuras)
+                cardEntries.forEach(entry => {
+                    const ym = /^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || ''))
+                        ? String(entry.invoiceMonth)
+                        : String(normalizeBankDate(entry?.date || entry?.purchaseDate || '')).slice(0,7);
+                    if(/^\d{4}-\d{2}$/.test(ym)) set.add(ym);
+                });
+                // Calendário contínuo: meses anteriores, mês atual e próximos 12 meses disponíveis.
+                const [curY, curM] = currentYM.split('-').map(Number);
+                const futureBase = new Date(curY, curM - 1 + 12, 1, 12, 0, 0, 0);
+                set.add(`${futureBase.getFullYear()}-${String(futureBase.getMonth()+1).padStart(2,'0')}`);
                 const allMonths = [...set].filter(Boolean).sort();
                 const maxYM = allMonths[allMonths.length - 1] || currentYM;
                 const [maxY, maxM] = maxYM.split('-').map(Number);
@@ -2662,7 +2671,7 @@
                     }
                 }
                 return [...set].sort((a,b)=>b.localeCompare(a));
-            }, [transactions, fixedBills, currentYM]);
+            }, [transactions, fixedBills, cardEntries, cards, currentYM]);
 
             // ── Summary (all time) ─────────────────────────────────────────────
             const totalSummary = useMemo(() => {
@@ -3673,7 +3682,7 @@
                 .filter(entry => getCardInvoiceMonth(entry, selectedCard) === selectedMonth), [selectedCardEntries, selectedMonth, selectedCard]);
 
             const selectedCardEntriesGrouped = useMemo(() => {
-                const groups = selectedCardEntries.reduce((acc, entry) => {
+                const groups = selectedCardEntriesForMonth.reduce((acc, entry) => {
                     const ym = getCardInvoiceMonth(entry, selectedCard);
                     if (!acc[ym]) acc[ym] = [];
                     acc[ym].push(entry);
@@ -3693,7 +3702,7 @@
                             return acc;
                         }, { total: 0, pessoal: 0, oficina: 0 })
                     }));
-            }, [selectedCardEntries, currentYM, selectedCard]);
+            }, [selectedCardEntriesForMonth, selectedCard]);
 
             const selectedCardSummary = useMemo(() => {
                 return selectedCardEntriesForMonth.reduce((acc, entry) => {
@@ -3704,6 +3713,20 @@
                     return acc;
                 }, { total: 0, pessoal: 0, oficina: 0 });
             }, [selectedCardEntriesForMonth]);
+
+            const fixedBillsForSelectedMonth = useMemo(() => fixedBills
+                .filter(b => b.active !== false && compareYM(selectedMonth, getBillStartMonth(b)) >= 0)
+                .sort((a,b) => parseInt(a.day, 10) - parseInt(b.day, 10)), [fixedBills, selectedMonth]);
+
+            const fixedBillsSelectedSummary = useMemo(() => fixedBillsForSelectedMonth.reduce((acc, b) => {
+                const value = Number(b.value || 0);
+                acc.total += value;
+                if ((b.area || 'oficina') === 'pessoal') acc.pessoal += value;
+                else acc.oficina += value;
+                if (isBillPaidForMonth(b, selectedMonth)) acc.paid += value;
+                else acc.pending += value;
+                return acc;
+            }, { total: 0, pessoal: 0, oficina: 0, paid: 0, pending: 0 }), [fixedBillsForSelectedMonth, selectedMonth]);
 
             const formatDateBR = (value) => {
                 if (!value) return '-';
@@ -5105,6 +5128,19 @@
                     {/* ════════════════ TAB: FIXAS ════════════════ */}
                     {tab === 'fixas' && (
                         <div className="space-y-4 animate-fadeIn">
+                            <MonthNav />
+                            <div className="os-card p-3 rounded-xl border border-white/5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="font-usarmy text-[#d4af37] text-xs">CONTAS FIXAS DE {monthLabel(selectedMonth).toUpperCase()}</p>
+                                        <p className="text-[9px] text-gray-500 font-mono">Mostra contas antigas recorrentes, novas contas do mês e próximos meses pelo calendário</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-usarmy text-white text-sm">{money(fixedBillsSelectedSummary.total)}</p>
+                                        <p className="text-[8px] text-gray-500">Pendente {money(fixedBillsSelectedSummary.pending)}</p>
+                                    </div>
+                                </div>
+                            </div>
                             {/* Urgent alerts */}
                             {billsAlerts.filter(b=>b.urgent||b.overdue).length > 0 && (
                                 <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
@@ -5137,7 +5173,7 @@
 
                             {/* Add bill button */}
                             {!showBillForm && (
-                                <button onClick={()=>setShowBillForm(true)}
+                                <button onClick={()=>{ setShowBillForm(true); setEditingBillId(null); setBillForm({name:'',value:'',date:`${selectedMonth}-01`,area:'oficina',active:true}); }}
                                     className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2">
                                     <BankUiIcon name="plus" size={16} color="#d4af37" />
                                     NOVA CONTA FIXA
@@ -5185,13 +5221,13 @@
                             {fixedBills.length > 0 && (
                                 <div className="os-card p-3 rounded-xl">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO/MÊS</span>
-                                        <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBills.filter(b=>b.active!==false).reduce((s,b)=>s+Number(b.value||0),0))}</span>
+                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO DO MÊS</span>
+                                        <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBillsSelectedSummary.total)}</span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mt-2">
                                         {['pessoal','oficina'].map(area=>{
                                             const m=AREA_META[area];
-                                            const total=fixedBills.filter(b=>b.active!==false&&b.area===area).reduce((s,b)=>s+Number(b.value||0),0);
+                                            const total=fixedBillsForSelectedMonth.filter(b=>(b.area||'oficina')===area).reduce((s,b)=>s+Number(b.value||0),0);
                                             return total>0?(
                                                 <div key={area} className="bg-white/5 rounded-lg p-2">
                                                     <p className="text-[8px] font-mono" style={{color:m.color}}>{m.label}</p>
@@ -5205,10 +5241,10 @@
 
                             {/* Bill list */}
                             <div className="space-y-2">
-                                {fixedBills.length === 0 && (
-                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA</div>
+                                {fixedBillsForSelectedMonth.length === 0 && (
+                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA NESTE MÊS</div>
                                 )}
-                                {[...fixedBills].sort((a,b)=>parseInt(a.day)-parseInt(b.day)).map(b => {
+                                {fixedBillsForSelectedMonth.map(b => {
                                     const meta = AREA_META[b.area||'oficina'];
                                     const status = getBillMonthStatus(b, selectedMonth);
                                     const { paid, urgent, overdue, waiting, daysUntil, dueDate, started } = status;
@@ -5288,6 +5324,7 @@
                         <div className="space-y-4 animate-fadeIn">
                             {!selectedCard && (
                                 <>
+                                    <MonthNav />
                                     <div className="os-card p-4 rounded-xl">
                                         <div className="flex items-center justify-between gap-3 mb-3">
                                             <div>
@@ -5301,12 +5338,12 @@
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="bg-white/5 rounded-lg p-3">
-                                                <p className="text-[8px] text-gray-500 font-mono">TOTAL LANÇADO</p>
-                                                <p className="font-usarmy text-red-400 text-sm">{money(cardEntries.reduce((s,e)=>s+Number(e.value||0),0))}</p>
+                                                <p className="text-[8px] text-gray-500 font-mono">FATURAS DO MÊS</p>
+                                                <p className="font-usarmy text-red-400 text-sm">{money(cardEntries.filter(e=>getCardInvoiceMonth(e, cards.find(c=>c.id===e.cardId))===selectedMonth).reduce((s,e)=>s+Number(e.value||0),0))}</p>
                                             </div>
                                             <div className="bg-white/5 rounded-lg p-3">
                                                 <p className="text-[8px] text-gray-500 font-mono">OFICINA</p>
-                                                <p className="font-usarmy text-[#d4af37] text-sm">{money(cardEntries.filter(e=>e.area==='oficina').reduce((s,e)=>s+Number(e.value||0),0))}</p>
+                                                <p className="font-usarmy text-[#d4af37] text-sm">{money(cardEntries.filter(e=>e.area==='oficina'&&getCardInvoiceMonth(e, cards.find(c=>c.id===e.cardId))===selectedMonth).reduce((s,e)=>s+Number(e.value||0),0))}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -5374,8 +5411,9 @@
                                             <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUM CARTÃO CADASTRADO</div>
                                         )}
                                         {cards.map(card => {
-                                            const cardTotal = cardEntries.filter(entry => entry.cardId === card.id).reduce((s,entry)=>s+Number(entry.value||0),0);
-                                            const cardCount = cardEntries.filter(entry => entry.cardId === card.id).length;
+                                            const monthEntries = cardEntries.filter(entry => entry.cardId === card.id && getCardInvoiceMonth(entry, card) === selectedMonth);
+                                            const cardTotal = monthEntries.reduce((s,entry)=>s+Number(entry.value||0),0);
+                                            const cardCount = monthEntries.length;
                                             return (
                                                 <div key={card.id} className="os-card p-3 rounded-xl border border-white/5">
                                                     <div className="flex items-start justify-between gap-3">
@@ -5389,7 +5427,7 @@
                                                                 <div className="flex flex-wrap items-center gap-1 mt-1">
                                                                     {card.brand && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-400 border border-white/10">{card.brand}</span>}
                                                                     {card.final && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-400 border border-white/10">FINAL {card.final}</span>}
-                                                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{cardCount} lanç.</span>
+                                                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{cardCount} fat. mês</span>
                                                                 </div>
                                                                 {card.limit ? <p className="text-[10px] text-gray-500 mt-1">Limite: {money(card.limit)}</p> : null}
                                                                 {card.dueDay ? <p className="text-[10px] text-gray-500 mt-1">Vencimento: dia {String(card.dueDay).padStart(2,'0')}</p> : null}
@@ -5418,6 +5456,7 @@
 
                             {selectedCard && (
                                 <>
+                                    <MonthNav />
                                     <div className="flex items-center justify-between gap-3">
                                         <button onClick={()=>{ setSelectedCardId(null); setEditingCardEntryId(null); setShowCardEntryForm(false); setCardEntryForm(emptyCardEntryForm); }} className="btn-icon text-gray-400" aria-label="Voltar aos cartões">
                                             <BankUiIcon name="arrow-left" size={20} color="#9ca3af" />
@@ -5426,7 +5465,17 @@
                                             <p className="font-usarmy text-[#d4af37] text-sm truncate">{selectedCard.name}</p>
                                             <p className="text-[9px] text-gray-500 font-mono">EXTRATO DO CARTÃO</p>
                                         </div>
-                                        <button onClick={()=>{ setShowCardEntryForm(v=>!v); if (showCardEntryForm) { setEditingCardEntryId(null); setCardEntryForm(emptyCardEntryForm); } }} className="btn-icon text-[#d4af37]" aria-label="Novo lançamento do cartão">
+                                        <button onClick={()=>{
+                                            if (showCardEntryForm) {
+                                                setEditingCardEntryId(null);
+                                                setCardEntryForm(emptyCardEntryForm);
+                                                setShowCardEntryForm(false);
+                                            } else {
+                                                setEditingCardEntryId(null);
+                                                setCardEntryForm(prev => ({ ...emptyCardEntryForm, area: prev.area || 'pessoal', category: getCats(prev.area || 'pessoal', 'saida')[0], date: `${selectedMonth}-01` }));
+                                                setShowCardEntryForm(true);
+                                            }
+                                        }} className="btn-icon text-[#d4af37]" aria-label="Novo lançamento do cartão">
                                             <BankUiIcon name="plus-circle" size={20} color="#d4af37" />
                                         </button>
                                     </div>
