@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-offline-v17-logo-pdf';
-const RUNTIME_CACHE = 'alcantara-runtime-v17-logo-pdf';
+const CACHE_NAME = 'alcantara-offline-v19-logo-retirada-pdf';
+const RUNTIME_CACHE = 'alcantara-runtime-v19-logo-retirada-pdf';
 
 const CORE_ASSETS = [
   './',
