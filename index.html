@@ -3485,14 +3485,21 @@
             };
 
             const getCardInvoiceMonth = (entry, card) => {
-                if (/^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || ''))) return String(entry.invoiceMonth);
-                const entryDate = normalizeBankDate(entry?.date, entry?.purchaseDate || isoToday());
+                const entryDate = normalizeBankDate(entry?.purchaseDate || entry?.date, isoToday());
                 const baseYM = String(entryDate).slice(0,7);
                 const closingDay = getCardClosingDay(card);
-                if (!closingDay) return baseYM;
+                const dueDay = getCardDueDay(card);
                 const entryDay = parseInt(String(entryDate).slice(8,10), 10);
-                if (!Number.isInteger(entryDay)) return baseYM;
-                return entryDay > closingDay ? addMonthsToYM(baseYM, 1) : baseYM;
+
+                // A fatura exibida no Bank representa o mês de VENCIMENTO.
+                // Regra: primeiro acha o mês de fechamento da compra; depois joga para o mês do vencimento.
+                // Ex.: fecha dia 31 e vence dia 11: compra 08/04 fecha em 30/04 e vence em 11/05.
+                if (!closingDay || !dueDay || !Number.isInteger(entryDay)) {
+                    return /^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || '')) ? String(entry.invoiceMonth) : baseYM;
+                }
+
+                const closingYM = entryDay > closingDay ? addMonthsToYM(baseYM, 1) : baseYM;
+                return dueDay <= closingDay ? addMonthsToYM(closingYM, 1) : closingYM;
             };
 
             const getCardInvoiceDueDate = (card, ym = currentYM) => {
