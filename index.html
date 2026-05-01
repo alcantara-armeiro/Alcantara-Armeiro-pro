@@ -8,13 +8,14 @@
     <!-- PWA Meta Tags Otimizadas -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Alcantara Pro">
-    <meta name="theme-color" content="#000000">
-    <meta name="background-color" content="#000000">
-    <meta name="msapplication-navbutton-color" content="#000000">
-    <meta name="msapplication-TileColor" content="#000000">
-    <meta name="navigation-bar-color" content="#000000">
+    <meta name="theme-color" content="#050505">
+    <meta name="background-color" content="#050505">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#050505">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#050505">
+    <meta name="msapplication-navbutton-color" content="#050505">
+    <meta name="msapplication-TileColor" content="#050505">
     <meta name="description" content="Sistema de Gerenciamento Alcantara Armeiro - Airsoft Repairs">
     <meta name="robots" content="noindex, nofollow">
 
@@ -48,27 +49,48 @@
 
         * { -webkit-tap-highlight-color: transparent; }
 
-        html, body {
-            background-color: #000000 !important;
+        :root {
+            color-scheme: dark;
+            background-color: #050505;
+            --app-bg: #050505;
+        }
+
+        html, body, #root {
             min-height: 100%;
+            background: #050505 !important;
+        }
+
+        html {
+            background-color: #050505 !important;
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #root {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background: #050505 !important;
+        }
+
+        @supports (padding: max(0px)) {
+            body { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
         }
 
         body { 
             font-family: 'Inter', sans-serif; 
-            background: #000000; 
+            background: #050505; 
             color: #e5e5e5; 
             margin: 0; 
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             overscroll-behavior-y: none;
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-
-        #root {
-            background: #000000;
-            min-height: 100vh;
-            min-height: 100dvh;
         }
 
         .font-usarmy { font-family: 'Black Ops One', cursive; letter-spacing: 0.05em; }
@@ -601,24 +623,6 @@
         }
 
     </style>
-
-    <script>
-        // Força barras do Android/PWA em preto quando instalado.
-        (function () {
-            const setMetaColor = (name, color) => {
-                let meta = document.querySelector(`meta[name="${name}"]`);
-                if (!meta) {
-                    meta = document.createElement('meta');
-                    meta.setAttribute('name', name);
-                    document.head.appendChild(meta);
-                }
-                meta.setAttribute('content', color);
-            };
-            setMetaColor('theme-color', '#000000');
-            setMetaColor('background-color', '#000000');
-            setMetaColor('navigation-bar-color', '#000000');
-        })();
-    </script>
 </head>
 
 <body>
@@ -626,6 +630,35 @@
     <div id="toast-container"></div>
     <div id="install-container"></div>
 
+
+    <script>
+        // Mantém as barras do Android/PWA no tema escuro do app.
+        (() => {
+            const DARK = '#050505';
+            document.documentElement.style.backgroundColor = DARK;
+            document.body && (document.body.style.backgroundColor = DARK);
+
+            const ensureMeta = (name, content) => {
+                let meta = document.querySelector(`meta[name="${name}"]:not([media])`);
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.setAttribute('name', name);
+                    document.head.appendChild(meta);
+                }
+                meta.setAttribute('content', content);
+            };
+
+            ensureMeta('theme-color', DARK);
+            ensureMeta('background-color', DARK);
+            ensureMeta('msapplication-navbutton-color', DARK);
+
+            window.addEventListener('load', () => {
+                document.documentElement.style.backgroundColor = DARK;
+                document.body.style.backgroundColor = DARK;
+                ensureMeta('theme-color', DARK);
+            });
+        })();
+    </script>
 
     <script>
         // ===== STORAGE BRIDGE V11 CLEAN BACKUP =====
@@ -974,11 +1007,6 @@
                 installmentIndex,
                 installmentValue: Number(item.installmentValue || item.value || 0),
                 installmentGroupId: String(item.installmentGroupId || '').trim(),
-                isRecurring: item.isRecurring === true,
-                recurringGroupId: String(item.recurringGroupId || '').trim(),
-                recurringIndex: Math.max(parseInt(item.recurringIndex || 1, 10) || 1, 1),
-                recurringActive: item.recurringActive !== false,
-                recurrenceMonths: Math.max(parseInt(item.recurrenceMonths || 72, 10) || 72, 1),
                 obs: String(item.obs || '').trim()
             };
         };
@@ -2687,16 +2715,7 @@
                 const set = new Set([currentYM]);
                 transactions.forEach(t => { const ym = String(normalizeBankDate(t?.date || '')).slice(0,7); if(/^\d{4}-\d{2}$/.test(ym)) set.add(ym); });
                 fixedBills.forEach(b => { if (isIsoDate(b?.date)) set.add(b.date.slice(0,7)); });
-                cardEntries.forEach(entry => {
-                    const ym = /^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || ''))
-                        ? String(entry.invoiceMonth)
-                        : String(normalizeBankDate(entry?.date || entry?.purchaseDate || '')).slice(0,7);
-                    if(/^\d{4}-\d{2}$/.test(ym)) set.add(ym);
-                });
-                // Calendário contínuo: meses anteriores, mês atual e próximos 12 meses disponíveis.
-                const [curY, curM] = currentYM.split('-').map(Number);
-                const futureBase = new Date(curY, curM - 1 + 12, 1, 12, 0, 0, 0);
-                set.add(`${futureBase.getFullYear()}-${String(futureBase.getMonth()+1).padStart(2,'0')}`);
+                // Gerar todos os meses desde Jan/2024 até o maior mês encontrado (inclusive contas futuras)
                 const allMonths = [...set].filter(Boolean).sort();
                 const maxYM = allMonths[allMonths.length - 1] || currentYM;
                 const [maxY, maxM] = maxYM.split('-').map(Number);
@@ -2709,7 +2728,7 @@
                     }
                 }
                 return [...set].sort((a,b)=>b.localeCompare(a));
-            }, [transactions, fixedBills, cardEntries, cards, currentYM]);
+            }, [transactions, fixedBills, currentYM]);
 
             // ── Summary (all time) ─────────────────────────────────────────────
             const totalSummary = useMemo(() => {
@@ -3468,10 +3487,7 @@
                 obs: '',
                 isInstallment: false,
                 installmentCount: '2',
-                installmentGroupId: '',
-                isRecurring: false,
-                recurrenceMonths: '72',
-                recurringGroupId: ''
+                installmentGroupId: ''
             };
             const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) || null, [cards, selectedCardId]);
             const [cardForm, setCardForm] = useState(emptyCardForm);
@@ -3526,25 +3542,14 @@
             };
 
             const getCardInvoiceMonth = (entry, card) => {
-                // Para parcelamento, cada registro já representa UMA parcela e tem sua própria data.
-                // Por isso a fatura deve ser calculada pela data da parcela (entry.date), não pela data original da compra.
-                // Ex.: compra 08/04 em 3x, cartão fecha 31 e vence 11:
-                // parcela 1 -> fatura 05/2026, parcela 2 -> fatura 06/2026, parcela 3 -> fatura 07/2026.
-                const entryDate = normalizeBankDate(entry?.date || entry?.purchaseDate, isoToday());
+                if (/^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || ''))) return String(entry.invoiceMonth);
+                const entryDate = normalizeBankDate(entry?.date, entry?.purchaseDate || isoToday());
                 const baseYM = String(entryDate).slice(0,7);
                 const closingDay = getCardClosingDay(card);
-                const dueDay = getCardDueDay(card);
+                if (!closingDay) return baseYM;
                 const entryDay = parseInt(String(entryDate).slice(8,10), 10);
-
-                // A fatura exibida no Bank representa o mês de VENCIMENTO.
-                // Primeiro encontra o mês de fechamento da parcela, depois joga para o mês de vencimento.
-                // Ex.: fecha dia 31 e vence dia 11: compra/parcela em 08/04 fecha em 30/04 e vence em 11/05.
-                if (!closingDay || !dueDay || !Number.isInteger(entryDay)) {
-                    return /^\d{4}-\d{2}$/.test(String(entry?.invoiceMonth || '')) ? String(entry.invoiceMonth) : baseYM;
-                }
-
-                const closingYM = entryDay > closingDay ? addMonthsToYM(baseYM, 1) : baseYM;
-                return dueDay <= closingDay ? addMonthsToYM(closingYM, 1) : closingYM;
+                if (!Number.isInteger(entryDay)) return baseYM;
+                return entryDay > closingDay ? addMonthsToYM(baseYM, 1) : baseYM;
             };
 
             const getCardInvoiceDueDate = (card, ym = currentYM) => {
@@ -3558,43 +3563,10 @@
 
             const buildCardEntriesFromForm = (form, card) => {
                 const totalValue = Math.round((Number(form.totalValue || 0) + Number.EPSILON) * 100) / 100;
-                const purchaseDate = normalizeBankDate(form.date, isoToday());
-                const timestamp = Date.now();
-                const isRecurring = form.isRecurring === true;
-
-                if (isRecurring) {
-                    const recurrenceMonths = Math.min(Math.max(parseInt(form.recurrenceMonths || 72, 10) || 72, 1), 120);
-                    const recurringGroupId = form.recurringGroupId || `card_recurring_${timestamp}`;
-                    return Array.from({ length: recurrenceMonths }, (_, index) => {
-                        const recurringDate = shiftIsoDateMonths(purchaseDate, index);
-                        return {
-                            id: `card_entry_${timestamp}_rec_${index}_${Math.random().toString(36).slice(2,8)}`,
-                            cardId: selectedCardId,
-                            area: form.area === 'oficina' ? 'oficina' : 'pessoal',
-                            category: form.category,
-                            description: form.description.trim(),
-                            value: totalValue,
-                            totalPurchaseValue: totalValue,
-                            date: recurringDate,
-                            purchaseDate,
-                            invoiceMonth: getCardInvoiceMonth({ date: recurringDate }, card),
-                            obs: form.obs || '',
-                            isInstallment: false,
-                            installmentCount: 1,
-                            installmentIndex: 1,
-                            installmentValue: totalValue,
-                            installmentGroupId: '',
-                            isRecurring: true,
-                            recurringGroupId,
-                            recurringIndex: index + 1,
-                            recurringActive: true,
-                            recurrenceMonths
-                        };
-                    });
-                }
-
                 const installmentCount = form.isInstallment ? Math.max(parseInt(form.installmentCount || 1, 10) || 1, 2) : 1;
                 const values = splitAmountAcrossInstallments(totalValue, installmentCount);
+                const purchaseDate = normalizeBankDate(form.date, isoToday());
+                const timestamp = Date.now();
                 const groupId = installmentCount > 1 ? (form.installmentGroupId || `card_installment_${timestamp}`) : '';
                 return values.map((installmentValue, index) => {
                     const installmentDate = shiftIsoDateMonths(purchaseDate, index);
@@ -3614,12 +3586,7 @@
                         installmentCount,
                         installmentIndex: index + 1,
                         installmentValue,
-                        installmentGroupId: groupId,
-                        isRecurring: false,
-                        recurringGroupId: '',
-                        recurringIndex: 1,
-                        recurringActive: true,
-                        recurrenceMonths: 1
+                        installmentGroupId: groupId
                     };
                 });
             };
@@ -3699,10 +3666,6 @@
                 }
                 const totalValue = Number(cardEntryForm.totalValue || 0);
                 const installmentCount = cardEntryForm.isInstallment ? Math.max(parseInt(cardEntryForm.installmentCount || 1, 10) || 1, 2) : 1;
-                if (cardEntryForm.isRecurring && cardEntryForm.isInstallment) {
-                    showToast('Escolha parcelado OU recorrente', 'warning');
-                    return;
-                }
                 if (!cardEntryForm.description.trim() || totalValue <= 0 || !cardEntryForm.date) {
                     showToast('Preencha descrição, valor total e data da compra', 'warning');
                     return;
@@ -3714,10 +3677,9 @@
                 const payloads = buildCardEntriesFromForm(cardEntryForm, selectedCardData);
                 const currentEditingEntry = cardEntries.find(entry => entry.id === editingCardEntryId);
                 const editingGroupId = currentEditingEntry?.installmentGroupId || cardEntryForm.installmentGroupId || '';
-                const editingRecurringGroupId = currentEditingEntry?.recurringGroupId || cardEntryForm.recurringGroupId || '';
                 setCardEntries(prev => {
                     const filtered = editingCardEntryId
-                        ? prev.filter(entry => editingRecurringGroupId ? entry.recurringGroupId !== editingRecurringGroupId : (editingGroupId ? entry.installmentGroupId !== editingGroupId : entry.id !== editingCardEntryId))
+                        ? prev.filter(entry => editingGroupId ? entry.installmentGroupId !== editingGroupId : entry.id !== editingCardEntryId)
                         : prev;
                     return [...payloads, ...filtered];
                 });
@@ -3726,26 +3688,20 @@
                 setShowCardEntryForm(false);
                 showToast(
                     editingCardEntryId
-                        ? (cardEntryForm.isRecurring ? '✅ Recorrência atualizada' : (payloads.length > 1 ? '✅ Parcelamento atualizado' : '✅ Lançamento do cartão atualizado'))
-                        : (cardEntryForm.isRecurring ? '✅ Compra recorrente salva' : (payloads.length > 1 ? '✅ Gasto parcelado salvo' : '✅ Gasto do cartão salvo')),
+                        ? (payloads.length > 1 ? '✅ Parcelamento atualizado' : '✅ Lançamento do cartão atualizado')
+                        : (payloads.length > 1 ? '✅ Gasto parcelado salvo' : '✅ Gasto do cartão salvo'),
                     'success'
                 );
             };
 
             const editCardEntry = (entry) => {
-                const groupEntries = entry.recurringGroupId
+                const groupEntries = entry.installmentGroupId
                     ? cardEntries
-                        .filter(item => item.recurringGroupId === entry.recurringGroupId)
-                        .sort((a,b) => Number(a.recurringIndex || 1) - Number(b.recurringIndex || 1))
-                    : (entry.installmentGroupId
-                        ? cardEntries
-                            .filter(item => item.installmentGroupId === entry.installmentGroupId)
-                            .sort((a,b) => Number(a.installmentIndex || 1) - Number(b.installmentIndex || 1))
-                        : [entry]);
-                const baseEntry = groupEntries.find(item => Number(item.installmentIndex || 1) === 1 || Number(item.recurringIndex || 1) === 1) || groupEntries[0] || entry;
-                const totalPurchaseValue = entry.recurringGroupId
-                    ? Number(baseEntry.value || baseEntry.totalPurchaseValue || 0)
-                    : Number(baseEntry.totalPurchaseValue || groupEntries.reduce((sum, item) => sum + Number(item.value || 0), 0));
+                        .filter(item => item.installmentGroupId === entry.installmentGroupId)
+                        .sort((a,b) => Number(a.installmentIndex || 1) - Number(b.installmentIndex || 1))
+                    : [entry];
+                const baseEntry = groupEntries.find(item => Number(item.installmentIndex || 1) === 1) || groupEntries[0] || entry;
+                const totalPurchaseValue = Number(baseEntry.totalPurchaseValue || groupEntries.reduce((sum, item) => sum + Number(item.value || 0), 0));
                 const area = baseEntry.area || 'pessoal';
                 const installmentCount = Math.max(parseInt(baseEntry.installmentCount || groupEntries.length || 1, 10) || 1, 1);
                 setEditingCardEntryId(entry.id);
@@ -3756,12 +3712,9 @@
                     totalValue: totalPurchaseValue ? String(totalPurchaseValue.toFixed(2)) : '',
                     date: baseEntry.purchaseDate || baseEntry.date || isoToday(),
                     obs: baseEntry.obs || '',
-                    isInstallment: !baseEntry.isRecurring && installmentCount > 1,
+                    isInstallment: installmentCount > 1,
                     installmentCount: String(installmentCount > 1 ? installmentCount : 2),
-                    installmentGroupId: baseEntry.installmentGroupId || '',
-                    isRecurring: baseEntry.isRecurring === true,
-                    recurrenceMonths: String(baseEntry.recurrenceMonths || groupEntries.length || 72),
-                    recurringGroupId: baseEntry.recurringGroupId || ''
+                    installmentGroupId: baseEntry.installmentGroupId || ''
                 });
                 setShowCardEntryForm(true);
                 window.scrollTo({top:0,behavior:'smooth'});
@@ -3769,14 +3722,13 @@
 
             const removeCardEntry = (entryId) => {
                 const targetEntry = cardEntries.find(entry => entry.id === entryId);
-                const recurringGroupId = targetEntry?.recurringGroupId || '';
                 const groupId = targetEntry?.installmentGroupId || '';
-                setCardEntries(prev => recurringGroupId
-                    ? prev.filter(entry => entry.recurringGroupId !== recurringGroupId)
-                    : (groupId ? prev.filter(entry => entry.installmentGroupId !== groupId) : prev.filter(entry => entry.id !== entryId))
+                setCardEntries(prev => groupId
+                    ? prev.filter(entry => entry.installmentGroupId !== groupId)
+                    : prev.filter(entry => entry.id !== entryId)
                 );
                 setConfirmDeleteCardEntry(null);
-                showToast(recurringGroupId ? '🗑️ Recorrência cancelada/removida' : (groupId ? '🗑️ Parcelamento removido' : '🗑️ Lançamento do cartão removido'), 'success');
+                showToast(groupId ? '🗑️ Parcelamento removido' : '🗑️ Lançamento do cartão removido', 'success');
             };
 
             const selectedCardEntries = useMemo(() => cardEntries
@@ -3787,7 +3739,7 @@
                 .filter(entry => getCardInvoiceMonth(entry, selectedCard) === selectedMonth), [selectedCardEntries, selectedMonth, selectedCard]);
 
             const selectedCardEntriesGrouped = useMemo(() => {
-                const groups = selectedCardEntriesForMonth.reduce((acc, entry) => {
+                const groups = selectedCardEntries.reduce((acc, entry) => {
                     const ym = getCardInvoiceMonth(entry, selectedCard);
                     if (!acc[ym]) acc[ym] = [];
                     acc[ym].push(entry);
@@ -3807,7 +3759,7 @@
                             return acc;
                         }, { total: 0, pessoal: 0, oficina: 0 })
                     }));
-            }, [selectedCardEntriesForMonth, selectedCard]);
+            }, [selectedCardEntries, currentYM, selectedCard]);
 
             const selectedCardSummary = useMemo(() => {
                 return selectedCardEntriesForMonth.reduce((acc, entry) => {
@@ -3818,20 +3770,6 @@
                     return acc;
                 }, { total: 0, pessoal: 0, oficina: 0 });
             }, [selectedCardEntriesForMonth]);
-
-            const fixedBillsForSelectedMonth = useMemo(() => fixedBills
-                .filter(b => b.active !== false && compareYM(selectedMonth, getBillStartMonth(b)) >= 0)
-                .sort((a,b) => parseInt(a.day, 10) - parseInt(b.day, 10)), [fixedBills, selectedMonth]);
-
-            const fixedBillsSelectedSummary = useMemo(() => fixedBillsForSelectedMonth.reduce((acc, b) => {
-                const value = Number(b.value || 0);
-                acc.total += value;
-                if ((b.area || 'oficina') === 'pessoal') acc.pessoal += value;
-                else acc.oficina += value;
-                if (isBillPaidForMonth(b, selectedMonth)) acc.paid += value;
-                else acc.pending += value;
-                return acc;
-            }, { total: 0, pessoal: 0, oficina: 0, paid: 0, pending: 0 }), [fixedBillsForSelectedMonth, selectedMonth]);
 
             const formatDateBR = (value) => {
                 if (!value) return '-';
@@ -5233,19 +5171,6 @@
                     {/* ════════════════ TAB: FIXAS ════════════════ */}
                     {tab === 'fixas' && (
                         <div className="space-y-4 animate-fadeIn">
-                            <MonthNav />
-                            <div className="os-card p-3 rounded-xl border border-white/5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="font-usarmy text-[#d4af37] text-xs">CONTAS FIXAS DE {monthLabel(selectedMonth).toUpperCase()}</p>
-                                        <p className="text-[9px] text-gray-500 font-mono">Mostra contas antigas recorrentes, novas contas do mês e próximos meses pelo calendário</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-usarmy text-white text-sm">{money(fixedBillsSelectedSummary.total)}</p>
-                                        <p className="text-[8px] text-gray-500">Pendente {money(fixedBillsSelectedSummary.pending)}</p>
-                                    </div>
-                                </div>
-                            </div>
                             {/* Urgent alerts */}
                             {billsAlerts.filter(b=>b.urgent||b.overdue).length > 0 && (
                                 <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
@@ -5278,7 +5203,7 @@
 
                             {/* Add bill button */}
                             {!showBillForm && (
-                                <button onClick={()=>{ setShowBillForm(true); setEditingBillId(null); setBillForm({name:'',value:'',date:`${selectedMonth}-01`,area:'oficina',active:true}); }}
+                                <button onClick={()=>setShowBillForm(true)}
                                     className="gold-gradient w-full p-4 rounded-xl font-usarmy text-xs flex items-center justify-center gap-2">
                                     <BankUiIcon name="plus" size={16} color="#d4af37" />
                                     NOVA CONTA FIXA
@@ -5326,13 +5251,13 @@
                             {fixedBills.length > 0 && (
                                 <div className="os-card p-3 rounded-xl">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO DO MÊS</span>
-                                        <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBillsSelectedSummary.total)}</span>
+                                        <span className="font-usarmy text-xs text-gray-400">TOTAL FIXO/MÊS</span>
+                                        <span className="font-usarmy text-[#d4af37] text-sm">{money(fixedBills.filter(b=>b.active!==false).reduce((s,b)=>s+Number(b.value||0),0))}</span>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mt-2">
                                         {['pessoal','oficina'].map(area=>{
                                             const m=AREA_META[area];
-                                            const total=fixedBillsForSelectedMonth.filter(b=>(b.area||'oficina')===area).reduce((s,b)=>s+Number(b.value||0),0);
+                                            const total=fixedBills.filter(b=>b.active!==false&&b.area===area).reduce((s,b)=>s+Number(b.value||0),0);
                                             return total>0?(
                                                 <div key={area} className="bg-white/5 rounded-lg p-2">
                                                     <p className="text-[8px] font-mono" style={{color:m.color}}>{m.label}</p>
@@ -5346,10 +5271,10 @@
 
                             {/* Bill list */}
                             <div className="space-y-2">
-                                {fixedBillsForSelectedMonth.length === 0 && (
-                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA NESTE MÊS</div>
+                                {fixedBills.length === 0 && (
+                                    <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUMA CONTA FIXA</div>
                                 )}
-                                {fixedBillsForSelectedMonth.map(b => {
+                                {[...fixedBills].sort((a,b)=>parseInt(a.day)-parseInt(b.day)).map(b => {
                                     const meta = AREA_META[b.area||'oficina'];
                                     const status = getBillMonthStatus(b, selectedMonth);
                                     const { paid, urgent, overdue, waiting, daysUntil, dueDate, started } = status;
@@ -5429,7 +5354,6 @@
                         <div className="space-y-4 animate-fadeIn">
                             {!selectedCard && (
                                 <>
-                                    <MonthNav />
                                     <div className="os-card p-4 rounded-xl">
                                         <div className="flex items-center justify-between gap-3 mb-3">
                                             <div>
@@ -5443,12 +5367,12 @@
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="bg-white/5 rounded-lg p-3">
-                                                <p className="text-[8px] text-gray-500 font-mono">FATURAS DO MÊS</p>
-                                                <p className="font-usarmy text-red-400 text-sm">{money(cardEntries.filter(e=>getCardInvoiceMonth(e, cards.find(c=>c.id===e.cardId))===selectedMonth).reduce((s,e)=>s+Number(e.value||0),0))}</p>
+                                                <p className="text-[8px] text-gray-500 font-mono">TOTAL LANÇADO</p>
+                                                <p className="font-usarmy text-red-400 text-sm">{money(cardEntries.reduce((s,e)=>s+Number(e.value||0),0))}</p>
                                             </div>
                                             <div className="bg-white/5 rounded-lg p-3">
                                                 <p className="text-[8px] text-gray-500 font-mono">OFICINA</p>
-                                                <p className="font-usarmy text-[#d4af37] text-sm">{money(cardEntries.filter(e=>e.area==='oficina'&&getCardInvoiceMonth(e, cards.find(c=>c.id===e.cardId))===selectedMonth).reduce((s,e)=>s+Number(e.value||0),0))}</p>
+                                                <p className="font-usarmy text-[#d4af37] text-sm">{money(cardEntries.filter(e=>e.area==='oficina').reduce((s,e)=>s+Number(e.value||0),0))}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -5516,9 +5440,8 @@
                                             <div className="os-card p-10 rounded-xl text-center text-gray-600 font-usarmy text-xs">NENHUM CARTÃO CADASTRADO</div>
                                         )}
                                         {cards.map(card => {
-                                            const monthEntries = cardEntries.filter(entry => entry.cardId === card.id && getCardInvoiceMonth(entry, card) === selectedMonth);
-                                            const cardTotal = monthEntries.reduce((s,entry)=>s+Number(entry.value||0),0);
-                                            const cardCount = monthEntries.length;
+                                            const cardTotal = cardEntries.filter(entry => entry.cardId === card.id).reduce((s,entry)=>s+Number(entry.value||0),0);
+                                            const cardCount = cardEntries.filter(entry => entry.cardId === card.id).length;
                                             return (
                                                 <div key={card.id} className="os-card p-3 rounded-xl border border-white/5">
                                                     <div className="flex items-start justify-between gap-3">
@@ -5532,7 +5455,7 @@
                                                                 <div className="flex flex-wrap items-center gap-1 mt-1">
                                                                     {card.brand && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-400 border border-white/10">{card.brand}</span>}
                                                                     {card.final && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-400 border border-white/10">FINAL {card.final}</span>}
-                                                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{cardCount} fat. mês</span>
+                                                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{cardCount} lanç.</span>
                                                                 </div>
                                                                 {card.limit ? <p className="text-[10px] text-gray-500 mt-1">Limite: {money(card.limit)}</p> : null}
                                                                 {card.dueDay ? <p className="text-[10px] text-gray-500 mt-1">Vencimento: dia {String(card.dueDay).padStart(2,'0')}</p> : null}
@@ -5561,7 +5484,6 @@
 
                             {selectedCard && (
                                 <>
-                                    <MonthNav />
                                     <div className="flex items-center justify-between gap-3">
                                         <button onClick={()=>{ setSelectedCardId(null); setEditingCardEntryId(null); setShowCardEntryForm(false); setCardEntryForm(emptyCardEntryForm); }} className="btn-icon text-gray-400" aria-label="Voltar aos cartões">
                                             <BankUiIcon name="arrow-left" size={20} color="#9ca3af" />
@@ -5570,17 +5492,7 @@
                                             <p className="font-usarmy text-[#d4af37] text-sm truncate">{selectedCard.name}</p>
                                             <p className="text-[9px] text-gray-500 font-mono">EXTRATO DO CARTÃO</p>
                                         </div>
-                                        <button onClick={()=>{
-                                            if (showCardEntryForm) {
-                                                setEditingCardEntryId(null);
-                                                setCardEntryForm(emptyCardEntryForm);
-                                                setShowCardEntryForm(false);
-                                            } else {
-                                                setEditingCardEntryId(null);
-                                                setCardEntryForm(prev => ({ ...emptyCardEntryForm, area: prev.area || 'pessoal', category: getCats(prev.area || 'pessoal', 'saida')[0], date: `${selectedMonth}-01` }));
-                                                setShowCardEntryForm(true);
-                                            }
-                                        }} className="btn-icon text-[#d4af37]" aria-label="Novo lançamento do cartão">
+                                        <button onClick={()=>{ setShowCardEntryForm(v=>!v); if (showCardEntryForm) { setEditingCardEntryId(null); setCardEntryForm(emptyCardEntryForm); } }} className="btn-icon text-[#d4af37]" aria-label="Novo lançamento do cartão">
                                             <BankUiIcon name="plus-circle" size={20} color="#d4af37" />
                                         </button>
                                     </div>
@@ -5689,38 +5601,6 @@
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="os-card p-3 rounded-xl mb-4" style={{border:'1px solid rgba(255,255,255,0.08)'}}>
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <p className="font-usarmy text-white text-xs">COMPRA RECORRENTE MENSAL</p>
-                                                        <p className="text-[9px] text-gray-500 mt-1">Streaming, assinatura ou cobrança mensal até cancelar.</p>
-                                                    </div>
-                                                    <button type="button"
-                                                        onClick={()=>setCardEntryForm(prev=>({...prev,isRecurring:!prev.isRecurring,isInstallment:false}))}
-                                                        className="px-3 py-2 rounded-xl border font-usarmy text-[10px]"
-                                                        style={{
-                                                            color: cardEntryForm.isRecurring ? '#d4af37' : '#9ca3af',
-                                                            borderColor: cardEntryForm.isRecurring ? 'rgba(212,175,55,0.35)' : 'rgba(255,255,255,0.1)',
-                                                            background: cardEntryForm.isRecurring ? 'rgba(212,175,55,0.08)' : 'rgba(255,255,255,0.03)'
-                                                        }}>
-                                                        {cardEntryForm.isRecurring ? 'ATIVA' : 'NÃO'}
-                                                    </button>
-                                                </div>
-                                                {cardEntryForm.isRecurring && (
-                                                    <div className="grid grid-cols-2 gap-3 mt-3">
-                                                        <div>
-                                                            <p className="text-[9px] text-gray-500 font-mono mb-1">GERAR POR MESES</p>
-                                                            <input type="number" min="1" max="120" value={cardEntryForm.recurrenceMonths}
-                                                                onChange={e=>setCardEntryForm(prev=>({...prev,recurrenceMonths:e.target.value.replace(/\D/g,'').slice(0,3)}))}
-                                                                className="w-full p-3 rounded-xl text-sm" />
-                                                        </div>
-                                                        <div className="rounded-xl p-3 flex flex-col justify-center" style={{background:'rgba(212,175,55,0.06)', border:'1px solid rgba(212,175,55,0.12)'}}>
-                                                            <p className="text-[9px] text-gray-500 font-mono">VALOR MENSAL</p>
-                                                            <p className="font-usarmy text-[#d4af37] text-sm mt-1">{money(Number(cardEntryForm.totalValue || 0))}</p>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
                                             <p className="text-[9px] text-gray-500 font-mono mb-1">OBSERVAÇÃO (opcional)</p>
                                             <input type="text" value={cardEntryForm.obs} placeholder="Detalhes extras..."
                                                 onChange={e=>setCardEntryForm(prev=>({...prev,obs:e.target.value}))}
@@ -5761,14 +5641,12 @@
                                                             <AreaBadge area={entry.area} size="xs" />
                                                             <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-500 border border-white/10">{entry.category}</span>
                                                             {entry.isInstallment && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20">{entry.installmentIndex}/{entry.installmentCount}</span>}
-                                                            {entry.isRecurring && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20">RECORRENTE</span>}
                                                         </div>
                                                         <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
                                                         <p className="text-[10px] text-gray-500 mt-0.5">
                                                             {entry.date?.split('-').reverse().join('/')}
                                                             {entry.isInstallment ? ` • Parcela ${entry.installmentIndex}/${entry.installmentCount}` : ''}
-                                                            {entry.isRecurring ? ` • Recorrente mensal` : ''}
-                                                            {entry.purchaseDate && entry.purchaseDate !== entry.date ? ` • Início ${entry.purchaseDate.split('-').reverse().join('/')}` : ''}
+                                                            {entry.purchaseDate && entry.purchaseDate !== entry.date ? ` • Compra ${entry.purchaseDate.split('-').reverse().join('/')}` : ''}
                                                             {entry.obs ? ` • ${entry.obs}` : ''}
                                                         </p>
                                                     </div>
