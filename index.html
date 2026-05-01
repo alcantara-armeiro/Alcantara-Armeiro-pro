@@ -2,16 +2,19 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Alcantara Armeiro - Pro Edition V3</title>
 
     <!-- PWA Meta Tags Otimizadas -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Alcantara Pro">
-    <meta name="theme-color" content="#050505">
-    <meta name="background-color" content="#050505">
+    <meta name="theme-color" content="#000000">
+    <meta name="background-color" content="#000000">
+    <meta name="msapplication-navbutton-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="navigation-bar-color" content="#000000">
     <meta name="description" content="Sistema de Gerenciamento Alcantara Armeiro - Airsoft Repairs">
     <meta name="robots" content="noindex, nofollow">
 
@@ -45,15 +48,27 @@
 
         * { -webkit-tap-highlight-color: transparent; }
 
+        html, body {
+            background-color: #000000 !important;
+            min-height: 100%;
+        }
+
         body { 
             font-family: 'Inter', sans-serif; 
-            background: #050505; 
+            background: #000000; 
             color: #e5e5e5; 
             margin: 0; 
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             overscroll-behavior-y: none;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #root {
+            background: #000000;
+            min-height: 100vh;
+            min-height: 100dvh;
         }
 
         .font-usarmy { font-family: 'Black Ops One', cursive; letter-spacing: 0.05em; }
@@ -586,6 +601,24 @@
         }
 
     </style>
+
+    <script>
+        // Força barras do Android/PWA em preto quando instalado.
+        (function () {
+            const setMetaColor = (name, color) => {
+                let meta = document.querySelector(`meta[name="${name}"]`);
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.setAttribute('name', name);
+                    document.head.appendChild(meta);
+                }
+                meta.setAttribute('content', color);
+            };
+            setMetaColor('theme-color', '#000000');
+            setMetaColor('background-color', '#000000');
+            setMetaColor('navigation-bar-color', '#000000');
+        })();
+    </script>
 </head>
 
 <body>

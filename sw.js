@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-offline-v19-logo-retirada-pdf';
-const RUNTIME_CACHE = 'alcantara-runtime-v19-logo-retirada-pdf';
+const CACHE_NAME = 'alcantara-offline-v20-nav-black';
+const RUNTIME_CACHE = 'alcantara-runtime-v20-nav-black';
 
 const CORE_ASSETS = [
   './',
@@ -66,7 +66,7 @@ self.addEventListener('message', event => {
 async function indexFallback() {
   return (await caches.match('./index.html', { ignoreSearch: true })) ||
          (await caches.match('./', { ignoreSearch: true })) ||
-         new Response('<!doctype html><html><body style="background:#050505;color:#d4af37;font-family:sans-serif;padding:24px">Abra o app uma vez com internet para ativar o modo offline.</body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' }});
+         new Response('<!doctype html><html><body style="background:#000000;color:#d4af37;font-family:sans-serif;padding:24px">Abra o app uma vez com internet para ativar o modo offline.</body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' }});
 }
 
 self.addEventListener('fetch', event => {
