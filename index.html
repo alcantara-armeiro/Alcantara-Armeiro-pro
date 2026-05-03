@@ -2378,6 +2378,12 @@
             };
 
             const PERSONAL_EXPENSE_CATS = ['Retirada Pessoal','Uso Pessoal (Mat.)'];
+            const PERSONAL_EXPENSE_DESCRIPTION = 'Retirada ou gasto via oficina';
+
+            const getTransactionCats = (area, type, isPersonalExpense = false) => {
+                if (area === 'oficina' && type === 'saida' && isPersonalExpense) return CATS.pessoal.saida;
+                return getCats(area, type);
+            };
 
             const CAT_ICONS = {
                 'Salário':'briefcase','Freelance':'laptop','Renda Extra':'trending-up','Reembolso':'corner-up-left',
@@ -3258,14 +3264,16 @@
             // ── Save transaction ───────────────────────────────────────────────
             const saveTransaction = () => {
                 const value = parseFloat(form.value);
-                if (!form.description.trim() || !value || value <= 0) {
+                const isPE = form.area === 'oficina' && (form.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(form.category)) && form.type==='saida';
+                if ((!isPE && !form.description.trim()) || !value || value <= 0) {
                     showToast('Preencha descrição e valor válido', 'warning'); return;
                 }
-                const isPE = form.area === 'oficina' && (form.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(form.category)) && form.type==='saida';
+                const allowedCats = getTransactionCats(form.area, form.type, isPE);
+                const payloadCategory = allowedCats.includes(form.category) ? form.category : allowedCats[0];
                 const payload = {
                     id: editingId || Date.now().toString(),
-                    area: form.area, type: form.type, category: form.category,
-                    description: form.description.trim(), value, date: normalizeBankDate(form.date),
+                    area: form.area, type: form.type, category: payloadCategory,
+                    description: isPE ? PERSONAL_EXPENSE_DESCRIPTION : form.description.trim(), value, date: normalizeBankDate(form.date),
                     obs: form.obs||'', isPersonalExpense: isPE
                 };
                 setTransactions(prev => editingId
@@ -3412,8 +3420,14 @@
             };
 
             const handleTypeChange = (type) => {
-                const cats = getCats(form.area, type);
-                setForm(prev => ({...prev, type, category: cats[0]}));
+                const nextIsPE = form.area === 'oficina' && type === 'saida' && form.isPersonalExpense;
+                const cats = getTransactionCats(form.area, type, nextIsPE);
+                setForm(prev => ({
+                    ...prev,
+                    type,
+                    category: cats[0],
+                    description: nextIsPE ? PERSONAL_EXPENSE_DESCRIPTION : prev.description
+                }));
             };
 
             // ── Cartões ───────────────────────────────────────────────────────
@@ -4805,7 +4819,7 @@
                                         </div>
                                     </div>
                                     <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
-                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>({...p, area:'oficina', type:'saida', category:'Retirada Pessoal', isPersonalExpense:true})); }}
+                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>({...p, area:'oficina', type:'saida', category:CATS.pessoal.saida[0], description:PERSONAL_EXPENSE_DESCRIPTION, isPersonalExpense:true})); }}
                                             className="p-2.5 rounded-xl border text-white font-usarmy"
                                             style={{borderColor:'rgba(168,85,247,0.28)', background:'rgba(168,85,247,0.08)'}}>
                                             NOVA RETIRADA
@@ -5010,10 +5024,19 @@
                                         style={{background:'rgba(168,85,247,0.07)',border:'1px solid rgba(168,85,247,0.25)'}}>
                                         <div>
                                             <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>GASTO PESSOAL VIA OFICINA?</p>
-                                            <p className="text-[8px] text-gray-500 mt-0.5">Retirada ou uso pessoal de material</p>
+                                            <p className="text-[8px] text-gray-500 mt-0.5">Descrição automática: Retirada ou gasto via oficina</p>
                                         </div>
                                         <button
-                                            onClick={()=>setForm(p=>({...p,isPersonalExpense:!p.isPersonalExpense}))}
+                                            onClick={()=>setForm(p=>{
+                                                const nextIsPE = !p.isPersonalExpense;
+                                                const cats = getTransactionCats(p.area, p.type, nextIsPE);
+                                                return {
+                                                    ...p,
+                                                    isPersonalExpense: nextIsPE,
+                                                    category: cats.includes(p.category) ? p.category : cats[0],
+                                                    description: nextIsPE ? PERSONAL_EXPENSE_DESCRIPTION : p.description
+                                                };
+                                            })}
                                             className="w-11 h-6 rounded-full transition-all flex-shrink-0"
                                             style={{ background: form.isPersonalExpense ? '#a855f7' : 'rgba(255,255,255,0.1)' }}>
                                             <span className="block w-4 h-4 bg-white rounded-full transition-all m-1"
@@ -5027,7 +5050,7 @@
                                 <select value={form.category}
                                     onChange={e=>setForm(p=>({...p,category:e.target.value}))}
                                     className="w-full p-3 rounded-xl mb-4 text-sm">
-                                    {getCats(form.area, form.type).map(c=><option key={c} value={c}>{c}</option>)}
+                                    {getTransactionCats(form.area, form.type, form.isPersonalExpense).map(c=><option key={c} value={c}>{c}</option>)}
                                 </select>
 
                                 {/* Date + Description */}
@@ -5048,7 +5071,7 @@
                                 </div>
 
                                 <p className="text-[9px] text-gray-500 font-mono mb-1">DESCRIÇÃO</p>
-                                <input type="text" value={form.description} placeholder="Ex: Pagamento cliente João..."
+                                <input type="text" value={form.description} placeholder={form.isPersonalExpense ? PERSONAL_EXPENSE_DESCRIPTION : "Ex: Pagamento cliente João..."}
                                     onChange={e=>setForm(p=>({...p,description:e.target.value}))}
                                     className="w-full p-3 rounded-xl mb-3 text-sm" />
 
