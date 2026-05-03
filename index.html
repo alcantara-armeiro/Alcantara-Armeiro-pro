@@ -2199,7 +2199,7 @@
             const [confirmDelete,  setConfirmDelete]  = useState(null);
 
             const emptyForm = {
-                area: 'oficina', type: 'entrada', category: 'Serviço',
+                area: 'oficina', type: 'entrada', category: 'Serviço', categoryManual: false,
                 description: '', value: '', date: new Date().toISOString().slice(0,10),
                 obs: '', isPersonalExpense: false
             };
@@ -2207,10 +2207,11 @@
 
             useEffect(() => {
                 setForm(prev => {
+                    if (prev.categoryManual) return prev;
                     const nextCategory = inferSmartCategory(prev);
                     return nextCategory === prev.category ? prev : { ...prev, category: nextCategory };
                 });
-            }, [form.area, form.type, form.description, form.obs, form.isPersonalExpense]);
+            }, [form.area, form.type, form.description, form.obs, form.isPersonalExpense, form.categoryManual]);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
             const [cards,          setCards]          = useState(() => normalizeCards(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
             const [cardEntries,    setCardEntries]    = useState(() => normalizeCardEntries(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
@@ -2385,7 +2386,6 @@
             };
 
             const PERSONAL_EXPENSE_CATS = ['Retirada Pessoal','Uso Pessoal (Mat.)'];
-            const PERSONAL_EXPENSE_DESCRIPTION = 'Retirada ou gasto via oficina';
 
             const getTransactionCats = (area, type, isPersonalExpense = false) => {
                 if (area === 'oficina' && type === 'saida' && isPersonalExpense) return CATS.pessoal.saida;
@@ -3325,12 +3325,12 @@
             const saveTransaction = () => {
                 const value = parseFloat(form.value);
                 const isPE = form.area === 'oficina' && (form.isPersonalExpense || PERSONAL_EXPENSE_CATS.includes(form.category)) && form.type==='saida';
-                if ((!isPE && !form.description.trim()) || !value || value <= 0) {
+                if (!form.description.trim() || !value || value <= 0) {
                     showToast('Preencha descrição e valor válido', 'warning'); return;
                 }
                 const smartDraft = { ...form, isPersonalExpense: isPE };
-                const payloadCategory = inferSmartCategory(smartDraft);
-                const payloadDescription = form.description.trim() || (isPE ? 'Gasto pessoal via oficina' : payloadCategory);
+                const payloadCategory = form.categoryManual ? form.category : inferSmartCategory(smartDraft);
+                const payloadDescription = form.description.trim();
                 const payload = {
                     id: editingId || Date.now().toString(),
                     area: form.area, type: form.type, category: payloadCategory,
@@ -3351,7 +3351,7 @@
                 setEditingId(t.id);
                 setForm({ area:t.area, type:t.type, category:t.category,
                     description:t.description, value:String(t.value),
-                    date:t.date, obs:t.obs||'', isPersonalExpense:!!t.isPersonalExpense });
+                    date:t.date, obs:t.obs||'', isPersonalExpense:!!t.isPersonalExpense, categoryManual:true });
                 setTab('lancamentos');
                 window.scrollTo({top:0,behavior:'smooth'});
             };
@@ -3477,7 +3477,7 @@
 
             const handleAreaChange = (area) => {
                 setForm(prev => {
-                    const draft = { ...prev, area, isPersonalExpense: false };
+                    const draft = { ...prev, area, isPersonalExpense: false, categoryManual: false };
                     return { ...draft, category: inferSmartCategory(draft) };
                 });
             };
@@ -3485,7 +3485,7 @@
             const handleTypeChange = (type) => {
                 setForm(prev => {
                     const nextIsPE = prev.area === 'oficina' && type === 'saida' && prev.isPersonalExpense;
-                    const draft = { ...prev, type, isPersonalExpense: nextIsPE };
+                    const draft = { ...prev, type, isPersonalExpense: nextIsPE, categoryManual: false };
                     return { ...draft, category: inferSmartCategory(draft) };
                 });
             };
@@ -4879,7 +4879,7 @@
                                         </div>
                                     </div>
                                     <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
-                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>{ const draft={...p, area:'oficina', type:'saida', description:'', isPersonalExpense:true}; return {...draft, category:inferSmartCategory(draft)}; }); }}
+                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>{ const draft={...p, area:'oficina', type:'saida', description:'', isPersonalExpense:true, categoryManual:false}; return {...draft, category:inferSmartCategory(draft)}; }); }}
                                             className="p-2.5 rounded-xl border text-white font-usarmy"
                                             style={{borderColor:'rgba(168,85,247,0.28)', background:'rgba(168,85,247,0.08)'}}>
                                             NOVA RETIRADA
@@ -5093,6 +5093,7 @@
                                                 return {
                                                     ...p,
                                                     isPersonalExpense: nextIsPE,
+                                                    categoryManual: false,
                                                     category: inferSmartCategory({ ...p, isPersonalExpense: nextIsPE })
                                                 };
                                             })}
@@ -5105,13 +5106,34 @@
                                 )}
 
                                 {/* Smart Category */}
-                                <div className="rounded-xl p-3 mb-4 flex items-center justify-between"
+                                <div className="rounded-xl p-3 mb-4"
                                     style={{background:'rgba(212,175,55,0.06)',border:'1px solid rgba(212,175,55,0.18)'}}>
-                                    <div>
-                                        <p className="text-[8px] text-gray-500 font-mono">CATEGORIA INTELIGENTE</p>
-                                        <p className="font-usarmy text-[11px] text-[#d4af37] mt-1">{form.category || 'AUTO'}</p>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[8px] text-gray-500 font-mono">CATEGORIA INTELIGENTE</p>
+                                            <p className="font-usarmy text-[11px] text-[#d4af37] mt-1">{form.category || 'AUTO'}</p>
+                                            <p className="text-[8px] text-gray-600 mt-0.5">{form.categoryManual ? 'Editada manualmente' : 'Automática pela descrição'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <BankUiIcon name={CAT_ICONS[form.category] || 'sparkles'} size={18} color="#d4af37" />
+                                            <button
+                                                onClick={() => setForm(p => ({ ...p, categoryManual: !p.categoryManual, category: p.category || inferSmartCategory(p) }))}
+                                                className="px-3 py-2 rounded-xl border font-usarmy text-[9px]"
+                                                style={{borderColor:'rgba(212,175,55,0.28)', color:'#d4af37', background:'rgba(0,0,0,0.18)'}}>
+                                                {form.categoryManual ? 'AUTO' : 'EDITAR'}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <BankUiIcon name={CAT_ICONS[form.category] || 'sparkles'} size={18} color="#d4af37" />
+                                    {form.categoryManual && (
+                                        <select
+                                            value={form.category}
+                                            onChange={e => setForm(p => ({ ...p, category: e.target.value, categoryManual: true }))}
+                                            className="w-full p-3 rounded-xl mt-3 text-sm">
+                                            {getTransactionCats(form.area, form.type, form.isPersonalExpense).map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
 
                                 {/* Date + Description */}
