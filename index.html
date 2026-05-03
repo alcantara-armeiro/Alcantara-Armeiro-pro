@@ -2204,6 +2204,13 @@
                 obs: '', isPersonalExpense: false
             };
             const [form, setForm] = useState(emptyForm);
+
+            useEffect(() => {
+                setForm(prev => {
+                    const nextCategory = inferSmartCategory(prev);
+                    return nextCategory === prev.category ? prev : { ...prev, category: nextCategory };
+                });
+            }, [form.area, form.type, form.description, form.obs, form.isPersonalExpense]);
             const [billForm, setBillForm] = useState({ name:'', value:'', date: isoToday(), area:'oficina', active:true });
             const [cards,          setCards]          = useState(() => normalizeCards(safeJsonParse(SafeStorage.getItem('alcantara_bank_cards'), [])));
             const [cardEntries,    setCardEntries]    = useState(() => normalizeCardEntries(safeJsonParse(SafeStorage.getItem('alcantara_bank_card_entries'), [])));
@@ -2383,6 +2390,59 @@
             const getTransactionCats = (area, type, isPersonalExpense = false) => {
                 if (area === 'oficina' && type === 'saida' && isPersonalExpense) return CATS.pessoal.saida;
                 return getCats(area, type);
+            };
+
+
+            // Categoria inteligente: classifica automaticamente pelo texto, área e tipo.
+            const normalizeSmartText = (value = '') => String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase();
+
+            const smartCategoryRules = [
+                { cat:'Alimentação', terms:['mercado','supermercado','padaria','acougue','hortifruti','restaurante','lanche','almoco','janta','pizza','ifood','delivery','cafe','bebida','comida'] },
+                { cat:'Moradia/Aluguel', terms:['aluguel','condominio','casa','moradia','apartamento'] },
+                { cat:'Transporte', terms:['uber','99','taxi','onibus','metro','trem','gasolina','combustivel','posto','estacionamento','pedagio'] },
+                { cat:'Saúde', terms:['farmacia','remedio','medico','dentista','consulta','exame','hospital','saude'] },
+                { cat:'Lazer', terms:['cinema','passeio','jogo','game','lazer','bar','viagem'] },
+                { cat:'Educação', terms:['curso','faculdade','escola','livro','treinamento','educacao'] },
+                { cat:'Cartão de Crédito', terms:['cartao','credito','fatura','visa','mastercard','carrefour','atacadao','mercado pago','nubank'] },
+                { cat:'Marketplace', terms:['shopee','mercado livre','amazon','aliexpress','magazine','magalu','compra online'] },
+                { cat:'Streaming', terms:['netflix','prime','disney','spotify','youtube','iptv','streaming'] },
+                { cat:'Contas', terms:['luz','energia','agua','sabesp','internet','wifi','telefone','celular','mei','boleto','conta fixa','enel'] },
+                { cat:'Vestuário', terms:['roupa','tenis','camisa','calca','bermuda','vestuario'] },
+                { cat:'Serviço', terms:['servico','mao de obra','manutencao','conserto','reparo','limpeza','shimmy','upgrade','assistencia'] },
+                { cat:'Peça', terms:['peca','pistao','engrenagem','gear','motor','bucking','hop','nozzle','mola','cilindro','cabeça','cabeca','gatilho','mosfet'] },
+                { cat:'Produto', terms:['produto','venda','revenda','item vendido','mercadoria'] },
+                { cat:'Compra Insumo', terms:['insumo','graxa','oleo','cola','parafuso','fita','bbs','bb','material'] },
+                { cat:'Ferramenta/Equip.', terms:['ferramenta','equipamento','chave','alicate','multimetro','ferro de solda','bancada'] },
+                { cat:'Manutenção', terms:['manutencao oficina','reparo oficina','conserto oficina','limpeza oficina'] },
+                { cat:'Aluguel/Espaço', terms:['aluguel oficina','espaco','sala','ponto'] },
+                { cat:'Marketing', terms:['marketing','anuncio','trafego','impulsionamento','instagram','facebook ads','divulgacao'] },
+                { cat:'Frete', terms:['frete','correio','sedex','pac','envio','entrega','transportadora'] },
+                { cat:'Estoque', terms:['estoque','repor estoque','reposicao','fornecedor','compra de pecas'] },
+                { cat:'Retirada Pessoal', terms:['retirada','retirei','uso pessoal','pessoal via oficina','gasto pessoal'] },
+                { cat:'Salário', terms:['salario','ordenado','pagamento mensal'] },
+                { cat:'Freelance', terms:['freela','freelance','bico'] },
+                { cat:'Renda Extra', terms:['renda extra','extra'] },
+                { cat:'Reembolso', terms:['reembolso','devolucao','estorno'] },
+                { cat:'Presente', terms:['presente','doacao'] },
+                { cat:'Dividendos', terms:['dividendo','rendimento','investimento'] },
+            ];
+
+            const inferSmartCategory = (draft) => {
+                const allowed = getTransactionCats(draft.area, draft.type, draft.isPersonalExpense);
+                const text = normalizeSmartText([draft.description, draft.obs].filter(Boolean).join(' '));
+                if (draft.area === 'oficina' && draft.type === 'saida' && draft.isPersonalExpense) {
+                    const personalMatch = smartCategoryRules.find(rule =>
+                        allowed.includes(rule.cat) && rule.terms.some(term => text.includes(normalizeSmartText(term)))
+                    );
+                    return personalMatch?.cat || 'Outros';
+                }
+                const match = smartCategoryRules.find(rule =>
+                    allowed.includes(rule.cat) && rule.terms.some(term => text.includes(normalizeSmartText(term)))
+                );
+                return match?.cat || (allowed.includes(draft.category) ? draft.category : allowed[0]);
             };
 
             const CAT_ICONS = {
@@ -3268,12 +3328,13 @@
                 if ((!isPE && !form.description.trim()) || !value || value <= 0) {
                     showToast('Preencha descrição e valor válido', 'warning'); return;
                 }
-                const allowedCats = getTransactionCats(form.area, form.type, isPE);
-                const payloadCategory = allowedCats.includes(form.category) ? form.category : allowedCats[0];
+                const smartDraft = { ...form, isPersonalExpense: isPE };
+                const payloadCategory = inferSmartCategory(smartDraft);
+                const payloadDescription = form.description.trim() || (isPE ? 'Gasto pessoal via oficina' : payloadCategory);
                 const payload = {
                     id: editingId || Date.now().toString(),
                     area: form.area, type: form.type, category: payloadCategory,
-                    description: isPE ? PERSONAL_EXPENSE_DESCRIPTION : form.description.trim(), value, date: normalizeBankDate(form.date),
+                    description: payloadDescription, value, date: normalizeBankDate(form.date),
                     obs: form.obs||'', isPersonalExpense: isPE
                 };
                 setTransactions(prev => editingId
@@ -3415,19 +3476,18 @@
             };
 
             const handleAreaChange = (area) => {
-                const cats = getCats(area, form.type);
-                setForm(prev => ({...prev, area, category: cats[0], isPersonalExpense: false}));
+                setForm(prev => {
+                    const draft = { ...prev, area, isPersonalExpense: false };
+                    return { ...draft, category: inferSmartCategory(draft) };
+                });
             };
 
             const handleTypeChange = (type) => {
-                const nextIsPE = form.area === 'oficina' && type === 'saida' && form.isPersonalExpense;
-                const cats = getTransactionCats(form.area, type, nextIsPE);
-                setForm(prev => ({
-                    ...prev,
-                    type,
-                    category: cats[0],
-                    description: nextIsPE ? PERSONAL_EXPENSE_DESCRIPTION : prev.description
-                }));
+                setForm(prev => {
+                    const nextIsPE = prev.area === 'oficina' && type === 'saida' && prev.isPersonalExpense;
+                    const draft = { ...prev, type, isPersonalExpense: nextIsPE };
+                    return { ...draft, category: inferSmartCategory(draft) };
+                });
             };
 
             // ── Cartões ───────────────────────────────────────────────────────
@@ -4819,7 +4879,7 @@
                                         </div>
                                     </div>
                                     <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
-                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>({...p, area:'oficina', type:'saida', category:CATS.pessoal.saida[0], description:PERSONAL_EXPENSE_DESCRIPTION, isPersonalExpense:true})); }}
+                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>{ const draft={...p, area:'oficina', type:'saida', description:'', isPersonalExpense:true}; return {...draft, category:inferSmartCategory(draft)}; }); }}
                                             className="p-2.5 rounded-xl border text-white font-usarmy"
                                             style={{borderColor:'rgba(168,85,247,0.28)', background:'rgba(168,85,247,0.08)'}}>
                                             NOVA RETIRADA
@@ -5024,7 +5084,7 @@
                                         style={{background:'rgba(168,85,247,0.07)',border:'1px solid rgba(168,85,247,0.25)'}}>
                                         <div>
                                             <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>GASTO PESSOAL VIA OFICINA?</p>
-                                            <p className="text-[8px] text-gray-500 mt-0.5">Descrição automática: Retirada ou gasto via oficina</p>
+                                            <p className="text-[8px] text-gray-500 mt-0.5">Categoria pessoal aplicada automaticamente pela descrição</p>
                                         </div>
                                         <button
                                             onClick={()=>setForm(p=>{
@@ -5033,8 +5093,7 @@
                                                 return {
                                                     ...p,
                                                     isPersonalExpense: nextIsPE,
-                                                    category: cats.includes(p.category) ? p.category : cats[0],
-                                                    description: nextIsPE ? PERSONAL_EXPENSE_DESCRIPTION : p.description
+                                                    category: inferSmartCategory({ ...p, isPersonalExpense: nextIsPE })
                                                 };
                                             })}
                                             className="w-11 h-6 rounded-full transition-all flex-shrink-0"
@@ -5045,13 +5104,15 @@
                                     </div>
                                 )}
 
-                                {/* Category */}
-                                <p className="text-[9px] text-gray-500 font-mono mb-2">CATEGORIA</p>
-                                <select value={form.category}
-                                    onChange={e=>setForm(p=>({...p,category:e.target.value}))}
-                                    className="w-full p-3 rounded-xl mb-4 text-sm">
-                                    {getTransactionCats(form.area, form.type, form.isPersonalExpense).map(c=><option key={c} value={c}>{c}</option>)}
-                                </select>
+                                {/* Smart Category */}
+                                <div className="rounded-xl p-3 mb-4 flex items-center justify-between"
+                                    style={{background:'rgba(212,175,55,0.06)',border:'1px solid rgba(212,175,55,0.18)'}}>
+                                    <div>
+                                        <p className="text-[8px] text-gray-500 font-mono">CATEGORIA INTELIGENTE</p>
+                                        <p className="font-usarmy text-[11px] text-[#d4af37] mt-1">{form.category || 'AUTO'}</p>
+                                    </div>
+                                    <BankUiIcon name={CAT_ICONS[form.category] || 'sparkles'} size={18} color="#d4af37" />
+                                </div>
 
                                 {/* Date + Description */}
                                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -5071,7 +5132,7 @@
                                 </div>
 
                                 <p className="text-[9px] text-gray-500 font-mono mb-1">DESCRIÇÃO</p>
-                                <input type="text" value={form.description} placeholder={form.isPersonalExpense ? PERSONAL_EXPENSE_DESCRIPTION : "Ex: Pagamento cliente João..."}
+                                <input type="text" value={form.description} placeholder="Ex: mercado, gasolina, peça, frete, serviço..."
                                     onChange={e=>setForm(p=>({...p,description:e.target.value}))}
                                     className="w-full p-3 rounded-xl mb-3 text-sm" />
 
