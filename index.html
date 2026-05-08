@@ -1350,8 +1350,8 @@
 
         const OPERATIONAL_STAGES = [
             { key: 'ENTRADA', label: 'ENTRADA', cardClass: 'card-missoes', textClass: 'text-blue-400', icon: 'inbox' },
-            { key: 'TRIAGEM', label: 'TRIAGEM', cardClass: 'card-faturamento', textClass: 'text-orange-400', icon: 'clipboard' },
-            { key: 'DIAGNOSTICO', label: 'DIAGNÓSTICO', cardClass: 'card-pendentes', textClass: 'text-yellow-400', icon: 'search' },
+
+
             { key: 'AGUARDANDO_APROVACAO', label: 'AGUARDANDO APROVAÇÃO', cardClass: 'card-custos', textClass: 'text-red-400', icon: 'alert-circle' },
             { key: 'AGUARDANDO_PECA', label: 'AGUARDANDO PEÇA', cardClass: 'card-faturamento', textClass: 'text-orange-400', icon: 'package' },
             { key: 'EM_SERVICO', label: 'EM SERVIÇO', cardClass: 'card-missoes', textClass: 'text-blue-400', icon: 'wrench' },
@@ -1987,7 +1987,7 @@
             await drawPremiumPdfHeader(doc, 'ORDEM DE SERVIÇO', [{label:'OS',value:`#${order.osNumber}`},{label:'Data',value:order.date},{label:'Etapa',value:etapaPdf},{label:'Pagamento',value:order.paymentStatus==='PAGO'?'PAGO':'PENDENTE'}]);
             drawPdfWatermark(doc); let y=66;
             y=pdfSectionTitle(doc,'DADOS DO CLIENTE',y); const yClient=y; pdfInfoRow(doc,'Cliente',order.customerName,18,y,78); pdfInfoRow(doc,'Telefone',order.customerPhone,110,y,70); y=yClient+18;
-            y=pdfSectionTitle(doc,'EQUIPAMENTO E DIAGNÓSTICO',y); y=pdfInfoRow(doc,'Equipamento',order.equipment,18,y,160); if(order.deliveredDate || order.withdrawalDate || normalizeOperationalStatus(order.operationalStatus)==='ENTREGUE') y=pdfInfoRow(doc,'Data de retirada',order.deliveredDate || order.withdrawalDate || new Date().toLocaleDateString('pt-BR'),18,y+3,160); if(order.defects) y=pdfInfoRow(doc,'Defeito relatado',order.defects,18,y+3,170); if(order.techReport) y=pdfInfoRow(doc,'Diagnóstico técnico',order.techReport,18,y+3,170);
+
             y+=4; y=await pdfCheckPage(doc,y,50,'ORDEM DE SERVIÇO'); y=pdfSectionTitle(doc,'ITENS DA ORDEM',y);
             doc.setFillColor(238,238,238); doc.roundedRect(18,y-5,174,9,1.5,1.5,'F'); doc.setFont('courier','bold'); doc.setFontSize(7.5); doc.setTextColor(40,40,40); doc.text('TIPO',22,y); doc.text('DESCRIÇÃO',48,y); doc.text('QTD',145,y); doc.text('VALOR',170,y); y+=8;
             doc.setFont('courier','normal'); doc.setFontSize(8);
@@ -6983,7 +6983,7 @@
                 { key: 'eletrica', label: 'ELÉTRICA', sublabel: 'MOSFET E FIAÇÃO', icon: 'zap', cardClass: 'card-custos', textClass: 'text-red-400' },
                 { key: 'precisao', label: 'PRECISÃO', sublabel: 'HOP-UP E CANO', icon: 'crosshair', cardClass: 'card-lucro', textClass: 'text-green-400' },
                 { key: 'projetos', label: 'PROJETOS', sublabel: 'PCB • BURST • BANCADA', icon: 'cpu', cardClass: 'card-missoes', textClass: 'text-blue-400' },
-                { key: 'faq', label: 'FAQ / QNA', sublabel: 'DIAGNÓSTICO RÁPIDO', icon: 'help-circle', cardClass: 'card-faturamento', textClass: 'text-orange-400' },
+
                 { key: 'links', label: 'REFERÊNCIAS', sublabel: 'ROTINA E CHECKLIST', icon: 'link', cardClass: 'card-pendentes', textClass: 'text-yellow-400' }
             ];
 
@@ -7003,13 +7003,13 @@
             const projectData = [
                 { title: 'BURST MODE MOSFET', text: 'Controle eletrônico para rajadas curtas, proteção de contato e melhor resposta no gatilho. Exige leitura correta do ciclo e proteção contra overspin.' },
                 { title: 'CAPACITOR BANK', text: 'Banco de capacitores pode apoiar picos de corrente, mas exige dimensionamento, polaridade correta, isolamento e descarga segura. Não substitui bateria ruim.' },
-                { title: 'PCB DE BANCADA', text: 'Base para testes elétricos rápidos com conector de bateria, fusível, chave, motor, leitura de tensão e saída organizada para diagnóstico.' },
-                { title: 'CRONOPHONE / CRONO SETUP', text: 'Área para usar conversões de FPS, m/s e Joule durante diagnóstico de potência, padronizando BB, peso e energia final.' },
+
+
                 { title: 'CHECKLIST DIGITAL', text: 'Registrar sintomas, peças trocadas, FPS inicial/final, bateria usada, BB usada e observações reduz retrabalho e melhora a entrega ao cliente.' }
             ];
 
             const faqData = [
-                { q: 'Qual diagnóstico faço antes de abrir uma AEG?', a: 'Remova magazine, teste bateria, fusível, conectores, motor, carregador, hop-up e cronagem. Abra gearbox só depois de isolar sintomas.' },
+
                 { q: 'FPS alto sempre significa melhor alcance?', a: 'Não. Alcance depende de hop-up, bucking, vedação, peso da BB, cano e consistência.' },
                 { q: 'Quando o shimming está bom?', a: 'Quando as engrenagens giram livres, sem travar, com folga vertical mínima e som limpo após ajuste do motor.' },
                 { q: 'Por que a arma dá tiro fraco e varia FPS?', a: 'Normalmente é vedação: O-ring, nozzle, bucking, cabeça de cilindro ou alinhamento hop-up/gearbox.' },
@@ -7264,7 +7264,7 @@
                     <InfoCard icon="battery-charging" title="BATERIA" tag="TESTE" tone="green">Verifique tensão, C-rating, conector e queda sob carga. Bateria fraca simula motor ruim e falha de ciclo.</InfoCard>
                     <InfoCard icon="zap" title="MOSFET" tag="PROTEÇÃO" tone="red">Protege contatos, melhora resposta e permite recursos como active brake e pré-cocking quando compatível.</InfoCard>
                     <InfoCard icon="cable" title="FIAÇÃO E CONECTORES" tag="PERDA" tone="gold">Cabos finos, conector ruim e solda fria geram aquecimento e perda de desempenho. Prefira conexão firme e isolamento limpo.</InfoCard>
-                    <InfoCard icon="activity" title="DIAGNÓSTICO" tag="ORDEM" tone="blue">Teste bateria, fusível, conector, motor fora da gearbox, continuidade e somente depois abra a caixa.</InfoCard>
+
                 </div>
             );
 
@@ -7809,8 +7809,8 @@
 
             const stageLabels = {
                 ENTRADA: 'ENTRADA',
-                TRIAGEM: 'TRIAGEM',
-                DIAGNOSTICO: 'DIAGNÓSTICO',
+
+
                 AGUARDANDO_APROVACAO: 'AGUARDANDO APROVAÇÃO',
                 AGUARDANDO_PECA: 'AGUARDANDO PEÇA',
                 EM_SERVICO: 'EM SERVIÇO',
@@ -8734,9 +8734,9 @@
                     onClick: () => setView('clients_list')
                 },
                 {
-                    label: 'PRODUTOS',
+                    label: 'MARKETPLACE',
                     sublabel: 'ESTOQUE E ITENS',
-                    icon: 'package',
+                    icon: 'store',
                     cardClass: 'card-pagas',
                     textClass: 'text-green-400',
                     onClick: () => setView('products')
@@ -8847,7 +8847,7 @@
                         ))}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div className="w-full mt-3 space-y-3">
                         <button
                             onClick={() => {
                                 setView('create');
@@ -8864,51 +8864,62 @@
                                     }
                                 }, 140);
                             }}
-                            className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
-                            style={{ background: 'linear-gradient(135deg, #8b6a14 0%, #d4af37 50%, #8b6a14 100%)', boxShadow: '0 0 12px rgba(212,175,55,0.28), 0 0 28px rgba(212,175,55,0.12)', borderColor: 'rgba(245,211,106,0.45)' }}
+                            className="w-full min-h-[86px] p-5 rounded-2xl font-usarmy text-white shadow-2xl border dashboard-premium-btn"
+                            style={{ background: 'linear-gradient(135deg, #8b6a14 0%, #d4af37 50%, #8b6a14 100%)', boxShadow: '0 0 16px rgba(212,175,55,0.34), 0 0 34px rgba(212,175,55,0.16)', borderColor: 'rgba(245,211,106,0.55)' }}
                         >
                             <span
                                 className="dashboard-premium-shine"
                                 style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)' }}
                             ></span>
-                            <span className="dashboard-premium-inner justify-start">
-                                <i data-lucide="plus-circle" className="w-5 h-5 text-black"></i>
+                            <span className="dashboard-premium-inner">
+                                <i data-lucide="plus-circle" className="w-7 h-7 text-black"></i>
                                 <span className="text-left">
-                                
-                                    <span className="dashboard-premium-title block text-black">NOVA ORDEM</span>
+                                    <span className="dashboard-premium-label block text-black/70"></span>
+                                    <span className="dashboard-premium-title block text-black text-sm">NOVA ORDEM</span>
                                 </span>
                             </span>
                         </button>
 
-                        <button
-                            onClick={() => {
-                                setView('assistencia_tecnica');
-                                try {
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                } catch (e) {
-                                    window.scrollTo(0, 0);
-                                }
-                            }}
-                            className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
-                            style={{ background: 'linear-gradient(135deg, #314c1b 0%, #5d7a37 50%, #314c1b 100%)', boxShadow: '0 0 12px rgba(111,143,66,0.28), 0 0 28px rgba(111,143,66,0.12)', borderColor: 'rgba(143,184,90,0.45)' }}
-                        >
-                            <span
-                                className="dashboard-premium-shine"
-                                style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(210,232,171,0.24) 50%, rgba(255,255,255,0) 100%)' }}
-                            ></span>
-                            <span className="dashboard-premium-inner justify-start">
-                                <i data-lucide="shield-check" className="w-5 h-5 text-[#0b0b0b]"></i>
-                                <span className="text-left">                                    
-                                    <span className="dashboard-premium-title block text-white">ASSISTÊNCIA</span>
-                                </span>
-                            </span>
-                        </button>
+                        <div className="grid grid-cols-2 gap-3">
+                            {[
+                                { label: 'ASSISTÊNCIA', sublabel: '', icon: 'shield-check', view: 'assistencia_tecnica' },
+                                { label: 'ALCANTARA TECH', sublabel: '', icon: 'cpu', view: 'alcantara_tech' },
+                                { label: 'FORNECEDORES', sublabel: '', icon: 'building-2', view: 'fornecedores' },
+                                { label: 'HIST. EQUIP.', sublabel: '', icon: 'database', view: 'equipment_history' }
+                            ].map(action => (
+                                <button
+                                    key={action.view}
+                                    onClick={() => {
+                                        setView(action.view);
+                                        try {
+                                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        } catch (e) {
+                                            window.scrollTo(0, 0);
+                                        }
+                                    }}
+                                    className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
+                                    style={{ background: 'linear-gradient(135deg, #1b2430 0%, #111821 52%, #0b1017 100%)', boxShadow: '0 0 12px rgba(212,175,55,0.14), 0 0 26px rgba(212,175,55,0.08)', borderColor: 'rgba(212,175,55,0.28)' }}
+                                >
+                                    <span
+                                        className="dashboard-premium-shine"
+                                        style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,231,160,0.16) 50%, rgba(255,255,255,0) 100%)' }}
+                                    ></span>
+                                    <span className="dashboard-premium-inner justify-start">
+                                        <i data-lucide={action.icon} className="w-5 h-5 text-[#d4af37]"></i>
+                                        <span className="text-left min-w-0">
+                                            <span className="dashboard-premium-label block">{action.sublabel}</span>
+                                            <span className="dashboard-premium-title block text-white">{action.label}</span>
+                                        </span>
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="w-full os-card rounded-xl p-0 border border-white/5">
                         <p className="text-[10px] font-usarmy text-[#d4af37] mb-3 border-b border-white/5 pb-2 tracking-[1px]
                             text-center">
-                            MONITORAMENTO OPERACIONAL
+                            ETAPA OPERACIONAL
                         </p>
                         <div className="grid grid-cols-2 gap-2">
                             {operationalCards.map(card => {
@@ -8930,7 +8941,27 @@
                             })}
                         </div>
                     </div>
-
+                   
+                                        <p className="text-[10px] font-usarmy text-[#d4af37] mb-3 border-b border-white/5 pb-2 tracking-[1px] text-center glow-title w-full">
+                        SERVIÇOS FINANCEIROS
+                    </p>
+                                    <div className="w-full mt-2">
+                                    <button
+                                        onClick={() => setView('alcantara_bank')}
+                                        className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-0"
+                                        style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
+                                    >
+                                        <span
+                                            className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
+                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
+                                        ></span>
+                                        <span className="relative z-10 flex items-center justify-center gap-2">
+                                            <i data-lucide="landmark" className="w-4 h-4"></i>
+                                            BANK
+                                        </span>
+                                    </button>
+                                </div>
+                    
                     <div className="w-full mt-4">
                         <button 
                             onClick={() => setView('profit_analysis')}
@@ -8951,64 +8982,7 @@
                             </div>
                             <i data-lucide="arrow-right" className="w-6 h-6 text-[#d4af37]"></i>
                         </button>
-                                <div className="grid grid-cols-2 gap-3 mt-3">
-<button
-                                    onClick={() => setView('alcantara_bank')}
-                                    className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-0"
-                                    style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
-                                >
-                                    <span
-                                        className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                                        style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
-                                    ></span>
-                                    <span className="relative z-10 flex items-center justify-center gap-2">
-                                        <i data-lucide="landmark" className="w-4 h-4"></i>
-                                        BANK
-                                    </span>
-                                </button>
-                                <button
-                                    onClick={() => setView('alcantara_tech')}
-                                    className="w-full p-4 rounded-xl font-usarmy text-xs text-[#d4af37] shadow-2xl relative overflow-hidden border border-[#d4af37]/35 bg-[#0d0d0d] mt-0"
-                                    style={{ boxShadow: '0 0 12px rgba(212,175,55,0.16), 0 0 28px rgba(212,175,55,0.08)' }}
-                                >
-                                    <span className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.16) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}></span>
-                                    <span className="relative z-10 flex items-center justify-center gap-2"><i data-lucide="cpu" className="w-4 h-4"></i>ALCANTARA TECH</span>
-                                </button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 mt-3">
-                                    <button
-                                        onClick={() => setView('fornecedores')}
-                                        className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
-                                        style={{ background: 'linear-gradient(135deg, #233246 0%, #1b2837 50%, #17212e 100%)', boxShadow: '0 0 12px rgba(59,130,246,0.22), 0 0 28px rgba(59,130,246,0.12)', borderColor: 'rgba(96,165,250,0.35)' }}
-                                    >
-                                        <span
-                                            className="dashboard-premium-shine"
-                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(173,216,255,0.18) 50%, rgba(255,255,255,0) 100%)' }}
-                                        ></span>
-                                        <span className="dashboard-premium-inner justify-start">
-                                            <i data-lucide="building-2" className="w-5 h-5 text-[#b9d9ff]"></i>
-                                            <span className="text-left">                                               
-                                                <span className="dashboard-premium-title block text-white">FORNECEDORES</span>
-                                            </span>
-                                        </span>
-                                    </button>
-                                    <button
-                                        onClick={() => setView('equipment_history')}
-                                        className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
-                                        style={{ background: 'linear-gradient(135deg, #233246 0%, #1b2837 50%, #17212e 100%)', boxShadow: '0 0 12px rgba(59,130,246,0.22), 0 0 28px rgba(59,130,246,0.12)', borderColor: 'rgba(96,165,250,0.35)' }}
-                                    >
-                                        <span
-                                            className="dashboard-premium-shine"
-                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(173,216,255,0.18) 50%, rgba(255,255,255,0) 100%)' }}
-                                        ></span>
-                                        <span className="dashboard-premium-inner justify-start">
-                                            <i data-lucide="database" className="w-5 h-5 text-[#b9d9ff]"></i>
-                                            <span className="text-left">                 
-                                                <span className="dashboard-premium-title block text-white">HIST. EQUIP.</span>
-                                            </span>
-                                        </span>
-                                    </button>
-                                </div>
+                                
                     </div>
                 </div>
             );
@@ -9121,7 +9095,7 @@
                         </button>
 
                         <button onClick={() => setView('gestao_fornecedores')} className="os-card p-6 rounded-xl flex flex-col items-center gap-3 btn-icon">
-                            <i data-lucide="store" className="text-[#d4af37] w-8 h-8"></i>
+                            <i data-lucide="building-2" className="text-[#d4af37] w-8 h-8"></i>
                             <span className="text-[8px] font-usarmy text-gray-400">FORNECEDORES</span>
                         </button>
 
@@ -10714,7 +10688,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
 
                     <textarea 
                         className="w-full p-4 rounded-xl h-24 resize-none" 
-                        placeholder="Relatório Técnico (Diagnóstico)" 
+
                         value={formData.techReport} 
                         onChange={e => updateForm({ techReport: e.target.value })} 
                     />
@@ -10730,7 +10704,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 <option key={stage.key} value={stage.key}>{stage.label}</option>
                             ))}
                         </select>
-                        <p className="text-[8px] text-gray-500">A etapa operacional escolhida já alimenta os cards do monitoramento operacional na dashboard.</p>
+                        <p className="text-[8px] text-gray-500">A etapa operacional escolhida já alimenta os cards do Etapa Operacional na dashboard.</p>
                         {normalizeOperationalStatus(formData.operationalStatus) === 'ENTREGUE' && (
                             <div className="p-3 rounded-xl border border-green-500/20 bg-green-500/10">
                                 <p className="text-[9px] font-usarmy text-green-400">DATA DE RETIRADA AUTOMÁTICA</p>
@@ -11329,7 +11303,7 @@ Manutenção tática especializada`;
 ⚠️ DEFEITO RELATADO:
 ${order.defects || 'Não informado'}
 
-🔍 DIAGNÓSTICO TÉCNICO:
+
 ${order.techReport || 'Não informado'}
 
 💰 SUBTOTAL: R$ ${subtotal.toFixed(2)}
@@ -11380,7 +11354,7 @@ Alcantara Armeiro - Airsoft Repairs
 
                         {order.techReport && (
                             <div className="mb-4 p-4 bg-black/20 rounded-lg border border-white/5">
-                                <p className="text-[10px] font-usarmy text-gray-500 mb-2">DIAGNÓSTICO TÉCNICO</p>
+
                                 <p className="text-sm text-gray-300">{order.techReport}</p>
                             </div>
                         )}
@@ -12401,7 +12375,7 @@ Alcantara Armeiro - Airsoft Repairs
                         </div>
 
                         <textarea value={form.defect} onChange={e => setForm(prev => ({ ...prev, defect: e.target.value }))} placeholder="Defeito relatado *" className="w-full p-3 rounded-xl h-20 resize-none" />
-                        <textarea value={form.diagnosis} onChange={e => setForm(prev => ({ ...prev, diagnosis: e.target.value }))} placeholder="Diagnóstico / causa provável" className="w-full p-3 rounded-xl h-20 resize-none" />
+
                         <textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Observações técnicas" className="w-full p-3 rounded-xl h-20 resize-none" />
 
                         <div className="grid grid-cols-2 gap-3">
@@ -12485,7 +12459,7 @@ Alcantara Armeiro - Airsoft Repairs
                                             <p className="text-white leading-tight">{record.defect || '—'}</p>
                                         </div>
                                         <div>
-                                            <p className="text-gray-500 mb-1">DIAGNÓSTICO</p>
+
                                             <p className="text-white leading-tight">{record.diagnosis || '—'}</p>
                                         </div>
                                         {record.notes && (
