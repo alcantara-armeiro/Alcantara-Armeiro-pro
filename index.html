@@ -8042,11 +8042,34 @@
 
         // ========== NOVO COMPONENTE: ANÁLISE DE LUCRATIVIDADE ==========
         const ProfitAnalysis = ({ onBack, orders }) => {
-            const [periodFilter, setPeriodFilter] = useState('all');
+            const [periodFilter, setPeriodFilter] = useState('thisMonth');
             const [dateRange, setDateRange] = useState({ start: '', end: '' });
             const [activeTab, setActiveTab] = useState('overview');
+            const [monthlyGoal, setMonthlyGoal] = useState(() => parseFloat(SafeStorage.getItem('alcantara_profit_goal') || '12000') || 12000);
+            const [operationalCost, setOperationalCost] = useState(() => parseFloat(SafeStorage.getItem('alcantara_operational_cost') || '0') || 0);
 
-            // Períodos pré-definidos
+            const persistGoal = (value) => {
+                const normalized = parseFloat(String(value).replace(',', '.')) || 0;
+                setMonthlyGoal(normalized);
+                SafeStorage.setItem('alcantara_profit_goal', String(normalized));
+            };
+
+            const persistOperationalCost = (value) => {
+                const normalized = parseFloat(String(value).replace(',', '.')) || 0;
+                setOperationalCost(normalized);
+                SafeStorage.setItem('alcantara_operational_cost', String(normalized));
+            };
+
+            const parseOrderDate = (order) => {
+                if (!order?.date) return null;
+                const raw = String(order.date);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T12:00:00`);
+                const parts = raw.split('/');
+                if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
+                const fallback = new Date(raw);
+                return Number.isNaN(fallback.getTime()) ? null : fallback;
+            };
+
             const getPeriodDates = (period) => {
                 const today = new Date();
                 const end = today.toISOString().split('T')[0];
@@ -8065,10 +8088,11 @@
                     case 'thisMonth':
                         start = new Date(today.getFullYear(), today.getMonth(), 1);
                         break;
-                    case 'lastMonth':
-                        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                        const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-                        return { start: start.toISOString().split('T')[0], end: lastDayLastMonth.toISOString().split('T')[0] };
+                    case 'lastMonth': {
+                        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+                        return { start: lastMonthStart.toISOString().split('T')[0], end: lastMonthEnd.toISOString().split('T')[0] };
+                    }
                     case 'thisYear':
                         start = new Date(today.getFullYear(), 0, 1);
                         break;
@@ -8078,143 +8102,164 @@
                 return { start: start.toISOString().split('T')[0], end };
             };
 
-            // Aplicar filtro de período
             useEffect(() => {
-                if (periodFilter !== 'custom') {
-                    setDateRange(getPeriodDates(periodFilter));
-                }
+                if (periodFilter !== 'custom') setDateRange(getPeriodDates(periodFilter));
             }, [periodFilter]);
 
-            // Filtrar ordens por período
             const filteredOrders = useMemo(() => {
-                if (!dateRange.start || !dateRange.end) return orders;
+                const validOrders = asArray(orders).filter(order => order?.status !== 'CANCELADA');
+                if (!dateRange.start || !dateRange.end) return validOrders;
 
-                return orders.filter(order => {
-                    if (!order.date) return false;
-                    const [day, month, year] = order.date.split('/');
-                    // Usar T12:00:00 para evitar bug de fuso-horário (UTC off-by-one)
-                    const orderDate = new Date(`${year}-${month}-${day}T12:00:00`);
-                    const start = new Date(`${dateRange.start}T00:00:00`);
-                    const end = new Date(`${dateRange.end}T23:59:59`);
-                    return orderDate >= start && orderDate <= end;
+                const startDate = new Date(`${dateRange.start}T00:00:00`);
+                const endDate = new Date(`${dateRange.end}T23:59:59`);
+                return validOrders.filter(order => {
+                    const orderDate = parseOrderDate(order);
+                    return orderDate && orderDate >= startDate && orderDate <= endDate;
                 });
             }, [orders, dateRange]);
 
-            // Cálculos financeiros detalhados
+            const buildOrderProfit = (order, costPerOrder = 0) => {
+                const revenue = calculateTotal(order);
+                const discount = calculateDiscount(order);
+                const servicesRevenue = asArray(order.services).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+                const partsRevenue = asArray(order.parts).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+                const productsRevenue = asArray(order.products).reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+                const partsCost = asArray(order.parts).reduce((acc, item) => acc + getItemCostTotal(item), 0);
+                const productsCost = asArray(order.products).reduce((acc, item) => acc + getItemCostTotal(item), 0);
+                const grossProfit = servicesRevenue + (partsRevenue - partsCost) + (productsRevenue - productsCost);
+                const netProfit = grossProfit - costPerOrder;
+                const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+                const orderDate = parseOrderDate(order);
+                return {
+                    order,
+                    osNumber: order.osNumber || order.id || '-',
+                    customerName: order.customerName || 'Cliente sem nome',
+                    equipment: order.equipment || 'Equipamento não informado',
+                    revenue,
+                    discount,
+                    servicesRevenue,
+                    partsRevenue,
+                    productsRevenue,
+                    partsCost,
+                    productsCost,
+                    realCosts: partsCost + productsCost,
+                    grossProfit,
+                    operationalCost: costPerOrder,
+                    netProfit,
+                    margin,
+                    date: orderDate
+                };
+            };
+
             const financialMetrics = useMemo(() => {
-                let totalRevenue = 0;
-                let totalServices = 0;
-                let totalParts = 0;
-                let totalProducts = 0;
-                let totalDiscounts = 0;
-                let servicesCount = 0;
-                let partsCount = 0;
-                let ordersWithServices = 0;
-                let ordersWithParts = 0;
+                const activeOrders = filteredOrders;
+                const costPerOrder = activeOrders.length > 0 ? operationalCost / activeOrders.length : 0;
+                const orderProfits = activeOrders.map(order => buildOrderProfit(order, costPerOrder));
 
                 const serviceBreakdown = {};
                 const equipmentBreakdown = {};
+                const dailyBreakdown = {};
+                const partBreakdown = {};
 
-                filteredOrders.forEach(order => {
-                    if (order.status === 'CANCELADA') return;
+                orderProfits.forEach(item => {
+                    asArray(item.order.services).forEach(service => {
+                        const name = service.name || 'Serviço sem nome';
+                        const revenue = parseFloat(service.price) || 0;
+                        if (!serviceBreakdown[name]) serviceBreakdown[name] = { count: 0, revenue: 0, profit: 0 };
+                        serviceBreakdown[name].count += 1;
+                        serviceBreakdown[name].revenue += revenue;
+                        serviceBreakdown[name].profit += revenue;
+                    });
 
-                    const subtotal = calculateSubtotal(order);
-                    const discount = calculateDiscount(order);
-                    const total = calculateTotal(order);
+                    asArray(item.order.parts).forEach(part => {
+                        const name = part.name || 'Peça sem nome';
+                        const revenue = parseFloat(part.price) || 0;
+                        const cost = getItemCostTotal(part);
+                        if (!partBreakdown[name]) partBreakdown[name] = { count: 0, revenue: 0, cost: 0, profit: 0 };
+                        partBreakdown[name].count += 1;
+                        partBreakdown[name].revenue += revenue;
+                        partBreakdown[name].cost += cost;
+                        partBreakdown[name].profit += revenue - cost;
+                    });
 
-                    totalRevenue += total;
-                    totalDiscounts += discount;
+                    const equip = item.equipment;
+                    if (!equipmentBreakdown[equip]) equipmentBreakdown[equip] = { count: 0, revenue: 0, profit: 0 };
+                    equipmentBreakdown[equip].count += 1;
+                    equipmentBreakdown[equip].revenue += item.revenue;
+                    equipmentBreakdown[equip].profit += item.netProfit;
 
-                    // Serviços
-                    if (order.services && order.services.length > 0) {
-                        ordersWithServices++;
-                        order.services.forEach(service => {
-                            const price = parseFloat(service.price) || 0;
-                            totalServices += price;
-                            servicesCount++;
-
-                            if (!serviceBreakdown[service.name]) {
-                                serviceBreakdown[service.name] = { count: 0, revenue: 0 };
-                            }
-                            serviceBreakdown[service.name].count++;
-                            serviceBreakdown[service.name].revenue += price;
-                        });
-                    }
-
-                    // Peças
-                    if (order.parts && order.parts.length > 0) {
-                        ordersWithParts++;
-                        order.parts.forEach(part => {
-                            const price = parseFloat(part.price) || 0;
-                            totalParts += price;
-                            partsCount++;
-                        });
-                    }
-
-                    // Produtos
-                    if (order.products && order.products.length > 0) {
-                        order.products.forEach(product => {
-                            totalProducts += parseFloat(product.price) || 0;
-                        });
-                    }
-
-                    // Por equipamento
-                    if (order.equipment) {
-                        if (!equipmentBreakdown[order.equipment]) {
-                            equipmentBreakdown[order.equipment] = { count: 0, revenue: 0 };
-                        }
-                        equipmentBreakdown[order.equipment].count++;
-                        equipmentBreakdown[order.equipment].revenue += total;
+                    if (item.date) {
+                        const key = item.date.toISOString().slice(0, 10);
+                        if (!dailyBreakdown[key]) dailyBreakdown[key] = { revenue: 0, profit: 0, count: 0 };
+                        dailyBreakdown[key].revenue += item.revenue;
+                        dailyBreakdown[key].profit += item.netProfit;
+                        dailyBreakdown[key].count += 1;
                     }
                 });
 
-                // Lucro real: serviços contam como mão de obra; peças/produtos usam o campo Custo.
-                const servicesProfit = totalServices;
-                const estimatedPartsCost = filteredOrders.reduce((acc, order) => acc + asArray(order.parts).reduce((sum, item) => sum + getItemCostTotal(item), 0), 0);
-                const estimatedPartsProfit = filteredOrders.reduce((acc, order) => acc + asArray(order.parts).reduce((sum, item) => sum + getItemProfitTotal(item), 0), 0);
-                const productsCost = filteredOrders.reduce((acc, order) => acc + asArray(order.products).reduce((sum, item) => sum + getItemCostTotal(item), 0), 0);
-                const productsProfit = filteredOrders.reduce((acc, order) => acc + asArray(order.products).reduce((sum, item) => sum + getItemProfitTotal(item), 0), 0);
+                const totals = orderProfits.reduce((acc, item) => {
+                    acc.totalRevenue += item.revenue;
+                    acc.totalDiscounts += item.discount;
+                    acc.totalServices += item.servicesRevenue;
+                    acc.totalParts += item.partsRevenue;
+                    acc.totalProducts += item.productsRevenue;
+                    acc.totalPartsCost += item.partsCost;
+                    acc.totalProductsCost += item.productsCost;
+                    acc.totalGrossProfit += item.grossProfit;
+                    acc.totalNetProfit += item.netProfit;
+                    return acc;
+                }, {
+                    totalRevenue: 0,
+                    totalDiscounts: 0,
+                    totalServices: 0,
+                    totalParts: 0,
+                    totalProducts: 0,
+                    totalPartsCost: 0,
+                    totalProductsCost: 0,
+                    totalGrossProfit: 0,
+                    totalNetProfit: 0
+                });
 
-                const totalProfit = servicesProfit + estimatedPartsProfit + productsProfit;
-                const totalCosts = estimatedPartsCost + productsCost;
+                const totalRealCosts = totals.totalPartsCost + totals.totalProductsCost + operationalCost;
+                const margin = totals.totalRevenue > 0 ? (totals.totalNetProfit / totals.totalRevenue) * 100 : 0;
+                const goalProgress = monthlyGoal > 0 ? Math.min(100, (totals.totalNetProfit / monthlyGoal) * 100) : 0;
+                const lowMarginOrders = orderProfits
+                    .filter(item => item.revenue > 0 && item.margin < 25)
+                    .sort((a, b) => a.margin - b.margin)
+                    .slice(0, 5);
 
                 return {
-                    totalRevenue,
-                    totalServices,
-                    totalParts,
-                    totalProducts,
-                    totalDiscounts,
-                    servicesProfit,
-                    estimatedPartsProfit,
-                    productsProfit,
-                    totalProfit,
-                    estimatedPartsCost,
-                    productsCost,
-                    totalCosts,
-                    servicesCount,
-                    partsCount,
-                    ordersWithServices,
-                    ordersWithParts,
-                    totalOrders: filteredOrders.filter(o => o.status !== 'CANCELADA').length,
-                    serviceBreakdown: Object.entries(serviceBreakdown)
-                        .sort((a, b) => b[1].revenue - a[1].revenue)
-                        .slice(0, 10),
-                    equipmentBreakdown: Object.entries(equipmentBreakdown)
-                        .sort((a, b) => b[1].revenue - a[1].revenue)
-                        .slice(0, 5),
-                    profitMargin: totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0,
-                    avgTicket: filteredOrders.filter(o => o.status !== 'CANCELADA').length > 0 
-                        ? totalRevenue / filteredOrders.filter(o => o.status !== 'CANCELADA').length 
-                        : 0
+                    ...totals,
+                    totalRealCosts,
+                    operationalCost,
+                    costPerOrder,
+                    orderProfits,
+                    totalOrders: orderProfits.length,
+                    avgTicket: orderProfits.length ? totals.totalRevenue / orderProfits.length : 0,
+                    margin,
+                    goalProgress,
+                    remainingGoal: Math.max(0, monthlyGoal - totals.totalNetProfit),
+                    topOrders: [...orderProfits].sort((a, b) => b.netProfit - a.netProfit).slice(0, 5),
+                    lowMarginOrders,
+                    serviceBreakdown: Object.entries(serviceBreakdown).sort((a,b) => b[1].profit - a[1].profit).slice(0, 10),
+                    partBreakdown: Object.entries(partBreakdown).sort((a,b) => b[1].profit - a[1].profit).slice(0, 10),
+                    equipmentBreakdown: Object.entries(equipmentBreakdown).sort((a,b) => b[1].profit - a[1].profit).slice(0, 5),
+                    dailyBreakdown: Object.entries(dailyBreakdown).sort((a,b) => a[0].localeCompare(b[0])).slice(-10)
                 };
-            }, [filteredOrders]);
+            }, [filteredOrders, monthlyGoal, operationalCost]);
 
-            const formatCurrency = (value) => {
-                return new Intl.NumberFormat('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                }).format(value);
-            };
+            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(Number(value || 0));
+
+            const safePercent = (value) => `${Math.max(0, Math.min(100, Number(value || 0))).toFixed(0)}%`;
+
+            const healthConfig = financialMetrics.margin >= 45
+                ? { label: 'SAUDÁVEL', color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/25', icon: 'shield-check' }
+                : financialMetrics.margin >= 25
+                    ? { label: 'ATENÇÃO', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/25', icon: 'alert-triangle' }
+                    : { label: 'CRÍTICO', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/25', icon: 'circle-alert' };
 
             const periodOptions = [
                 { value: 'all', label: 'TODOS OS PERÍODOS' },
@@ -8227,56 +8272,70 @@
                 { value: 'custom', label: 'PERÍODO PERSONALIZADO' }
             ];
 
+            const MetricCard = ({ title, value, subtitle, icon, tone = 'gold' }) => {
+                const toneClass = {
+                    gold: 'text-[#d4af37] border-[#d4af37]/20 bg-[#d4af37]/10',
+                    green: 'text-green-400 border-green-500/20 bg-green-500/10',
+                    red: 'text-red-400 border-red-500/20 bg-red-500/10',
+                    blue: 'text-blue-400 border-blue-500/20 bg-blue-500/10',
+                    yellow: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10'
+                }[tone] || 'text-[#d4af37] border-[#d4af37]/20 bg-[#d4af37]/10';
+
+                return (
+                    <div className={`p-4 rounded-xl border ${toneClass}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                            <i data-lucide={icon} className="w-4 h-4"></i>
+                            <p className="text-[9px] font-usarmy">{title}</p>
+                        </div>
+                        <p className="text-lg font-usarmy text-white leading-tight">{value}</p>
+                        {subtitle && <p className="text-[9px] text-gray-500 mt-1">{subtitle}</p>}
+                    </div>
+                );
+            };
+
             return (
                 <div className="space-y-6 animate-fadeIn pb-10">
-                    {/* Header */}
                     <div className="flex items-center justify-between border-b border-white/10 pb-4">
                         <button type="button" onClick={onBack} className="btn-icon text-[#d4af37]">
                             <i data-lucide="arrow-left" className="w-5 h-5"></i>
                         </button>
-                        <h2 className="font-usarmy text-[#d4af37] text-sm">ANÁLISE DE LUCRATIVIDADE</h2>
+                        <h2 className="font-usarmy text-[#d4af37] text-sm">ANÁLISE DE LUCRATIVIDADE PRO</h2>
                         <div className="w-10"></div>
                     </div>
 
-                    {/* Seletor de Período */}
                     <div className="os-card p-4 rounded-xl space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2">
                             <i data-lucide="calendar" className="w-4 h-4 text-[#d4af37]"></i>
-                            <span className="text-[10px] font-usarmy text-gray-500">PERÍODO DE ANÁLISE</span>
+                            <span className="text-[10px] font-usarmy text-gray-500">PERÍODO E METAS</span>
                         </div>
 
-                        <select 
-                            value={periodFilter}
-                            onChange={(e) => setPeriodFilter(e.target.value)}
-                            className="w-full p-3 rounded-lg text-sm"
-                        >
-                            {periodOptions.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
+                        <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="w-full p-3 rounded-lg text-sm">
+                            {periodOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
 
                         {periodFilter === 'custom' && (
-                            <div className="grid grid-cols-2 gap-1.5">
+                            <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-[9px] text-gray-500 block mb-1">DATA INÍCIO</label>
-                                    <input 
-                                        type="date" 
-                                        value={dateRange.start}
-                                        onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
-                                        className="w-full p-2 rounded-lg text-sm"
-                                    />
+                                    <input type="date" value={dateRange.start} onChange={(e) => setDateRange({...dateRange, start: e.target.value})} className="w-full p-2 rounded-lg text-sm" />
                                 </div>
                                 <div>
                                     <label className="text-[9px] text-gray-500 block mb-1">DATA FIM</label>
-                                    <input 
-                                        type="date" 
-                                        value={dateRange.end}
-                                        onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
-                                        className="w-full p-2 rounded-lg text-sm"
-                                    />
+                                    <input type="date" value={dateRange.end} onChange={(e) => setDateRange({...dateRange, end: e.target.value})} className="w-full p-2 rounded-lg text-sm" />
                                 </div>
                             </div>
                         )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-[9px] text-gray-500 block mb-1">META DE LUCRO</label>
+                                <input type="number" value={monthlyGoal} onChange={(e) => persistGoal(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="12000" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] text-gray-500 block mb-1">CUSTO OPERACIONAL</label>
+                                <input type="number" value={operationalCost} onChange={(e) => persistOperationalCost(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="0" />
+                            </div>
+                        </div>
 
                         {dateRange.start && dateRange.end && (
                             <p className="text-[10px] text-center text-[#d4af37]">
@@ -8285,408 +8344,240 @@
                         )}
                     </div>
 
-                    {/* Tabs de Navegação */}
                     <div className="flex gap-2">
-                        <button 
-                            onClick={() => setActiveTab('overview')}
-                            className={`flex-1 py-3 px-2 rounded-lg text-[10px] font-bold transition-all ${
-                                activeTab === 'overview' ? 'tab-active' : 'tab-inactive'
-                            }`}
-                        >
-                            VISÃO GERAL
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('breakdown')}
-                            className={`flex-1 py-3 px-2 rounded-lg text-[10px] font-bold transition-all ${
-                                activeTab === 'breakdown' ? 'tab-active' : 'tab-inactive'
-                            }`}
-                        >
-                            DETALHAMENTO
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('services')}
-                            className={`flex-1 py-3 px-2 rounded-lg text-[10px] font-bold transition-all ${
-                                activeTab === 'services' ? 'tab-active' : 'tab-inactive'
-                            }`}
-                        >
-                            SERVIÇOS
-                        </button>
+                        {[
+                            ['overview', 'GERAL'],
+                            ['ranking', 'RANKING'],
+                            ['breakdown', 'CUSTOS'],
+                            ['services', 'SERVIÇOS']
+                        ].map(([key, label]) => (
+                            <button key={key} onClick={() => setActiveTab(key)} className={`flex-1 py-3 px-2 rounded-lg text-[10px] font-bold transition-all ${activeTab === key ? 'tab-active' : 'tab-inactive'}`}>
+                                {label}
+                            </button>
+                        ))}
                     </div>
 
-                    {/* TAB: VISÃO GERAL */}
                     {activeTab === 'overview' && (
                         <div className="space-y-4">
-                            {/* Cards Principais */}
+                            <div className={`p-4 rounded-xl border ${healthConfig.bg} ${healthConfig.border}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <i data-lucide={healthConfig.icon} className={`w-5 h-5 ${healthConfig.color}`}></i>
+                                        <div>
+                                            <p className="text-[9px] text-gray-500 font-usarmy">SAÚDE DA OPERAÇÃO</p>
+                                            <p className={`text-lg font-usarmy ${healthConfig.color}`}>{healthConfig.label}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[9px] text-gray-500">Margem líquida</p>
+                                        <p className={`text-xl font-usarmy ${healthConfig.color}`}>{financialMetrics.margin.toFixed(1)}%</p>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="card-lucro p-4 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <i data-lucide="trending-up" className="w-4 h-4 text-green-400"></i>
-                                        <p className="text-[9px] text-green-400 font-usarmy">LUCRO TOTAL</p>
-                                    </div>
-                                    <p className="text-xl font-usarmy text-green-400">
-                                        {formatCurrency(financialMetrics.totalProfit)}
-                                    </p>
-                                    <p className="text-[9px] text-gray-500 mt-1">
-                                        Margem: {financialMetrics.profitMargin}%
-                                    </p>
-                                </div>
+                                <MetricCard title="LUCRO LÍQUIDO" value={formatCurrency(financialMetrics.totalNetProfit)} subtitle="já desconta custo operacional" icon="badge-dollar-sign" tone="green" />
+                                <MetricCard title="FATURAMENTO" value={formatCurrency(financialMetrics.totalRevenue)} subtitle={`${financialMetrics.totalOrders} OS no período`} icon="wallet" tone="gold" />
+                                <MetricCard title="CUSTOS REAIS" value={formatCurrency(financialMetrics.totalRealCosts)} subtitle={`Peças + produtos + operação`} icon="receipt" tone="red" />
+                                <MetricCard title="TICKET MÉDIO" value={formatCurrency(financialMetrics.avgTicket)} subtitle="média por OS" icon="activity" tone="blue" />
+                            </div>
 
-                                <div className="card-faturamento p-4 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <i data-lucide="dollar-sign" className="w-4 h-4 text-orange-400"></i>
-                                        <p className="text-[9px] text-orange-400 font-usarmy">FATURAMENTO</p>
-                                    </div>
-                                    <p className="text-xl font-usarmy text-orange-400">
-                                        {formatCurrency(financialMetrics.totalRevenue)}
-                                    </p>
-                                    <p className="text-[9px] text-gray-500 mt-1">
-                                        {financialMetrics.totalOrders} ordens
-                                    </p>
+                            <div className="os-card p-5 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-usarmy text-[#d4af37]">META DE LUCRO</p>
+                                    <p className="text-[10px] text-gray-400">{safePercent(financialMetrics.goalProgress)}</p>
                                 </div>
-
-                                <div className="card-custos p-4 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <i data-lucide="trending-down" className="w-4 h-4 text-red-400"></i>
-                                        <p className="text-[9px] text-red-400 font-usarmy">CUSTOS ESTIMADOS</p>
-                                    </div>
-                                    <p className="text-xl font-usarmy text-red-400">
-                                        {formatCurrency(financialMetrics.totalCosts)}
-                                    </p>
-                                    <p className="text-[9px] text-gray-500 mt-1">
-                                        Peças + Produtos
-                                    </p>
+                                <div className="profit-bar-container h-3">
+                                    <div className="profit-bar bg-green-500" style={{ width: safePercent(financialMetrics.goalProgress) }}></div>
                                 </div>
-
-                                <div className="card-missoes p-4 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <i data-lucide="receipt" className="w-4 h-4 text-blue-400"></i>
-                                        <p className="text-[9px] text-blue-400 font-usarmy">TICKET MÉDIO</p>
-                                    </div>
-                                    <p className="text-xl font-usarmy text-blue-400">
-                                        {formatCurrency(financialMetrics.avgTicket)}
-                                    </p>
-                                    <p className="text-[9px] text-gray-500 mt-1">
-                                        Por ordem
-                                    </p>
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-green-400">{formatCurrency(financialMetrics.totalNetProfit)}</span>
+                                    <span className="text-gray-500">Faltam {formatCurrency(financialMetrics.remainingGoal)}</span>
+                                    <span className="text-[#d4af37]">{formatCurrency(monthlyGoal)}</span>
                                 </div>
                             </div>
 
-                            {/* Resumo por Categoria */}
+                            {financialMetrics.lowMarginOrders.length > 0 && (
+                                <div className="os-card p-5 rounded-xl border border-yellow-500/20">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <i data-lucide="alert-triangle" className="w-4 h-4 text-yellow-400"></i>
+                                        <p className="text-[10px] font-usarmy text-yellow-400">ALERTA DE MARGEM BAIXA</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {financialMetrics.lowMarginOrders.map(item => (
+                                            <div key={item.osNumber} className="flex justify-between items-center p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/10">
+                                                <div>
+                                                    <p className="text-xs text-white font-bold">OS #{item.osNumber} • {item.customerName}</p>
+                                                    <p className="text-[9px] text-gray-500">{item.equipment}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-yellow-400 font-mono text-xs">{formatCurrency(item.netProfit)}</p>
+                                                    <p className="text-[9px] text-yellow-400">{item.margin.toFixed(1)}%</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                    BREAKDOWN POR CATEGORIA
-                                </p>
-
-                                {/* Serviços */}
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                            <span className="text-sm text-white font-bold">Serviços (Mão de Obra)</span>
-                                        </div>
-                                        <span className="text-[#d4af37] font-bold">{formatCurrency(financialMetrics.totalServices)}</span>
-                                    </div>
-                                    <div className="profit-bar-container">
-                                        <div 
-                                            className="profit-bar bg-blue-500"
-                                            style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalServices/financialMetrics.totalRevenue)*100}%` : '0%' }}
-                                        ></div>
-                                    </div>
-                                    <p className="text-[9px] text-green-400 mt-1">
-                                        Lucro: {formatCurrency(financialMetrics.servicesProfit)} (100% margem)
-                                    </p>
-                                </div>
-
-                                {/* Peças */}
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                            <span className="text-sm text-white font-bold">Peças</span>
-                                        </div>
-                                        <span className="text-[#d4af37] font-bold">{formatCurrency(financialMetrics.totalParts)}</span>
-                                    </div>
-                                    <div className="profit-bar-container">
-                                        <div 
-                                            className="profit-bar bg-yellow-500"
-                                            style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalParts/financialMetrics.totalRevenue)*100}%` : '0%' }}
-                                        ></div>
-                                    </div>
-                                    <div className="flex justify-between text-[9px] mt-1">
-                                        <span className="text-red-400">Custo real: {formatCurrency(financialMetrics.estimatedPartsCost)}</span>
-                                        <span className="text-green-400">Lucro real: {formatCurrency(financialMetrics.estimatedPartsProfit)}</span>
-                                    </div>
-                                </div>
-
-                                {/* Produtos */}
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                            <span className="text-sm text-white font-bold">Produtos</span>
-                                        </div>
-                                        <span className="text-[#d4af37] font-bold">{formatCurrency(financialMetrics.totalProducts)}</span>
-                                    </div>
-                                    <div className="profit-bar-container">
-                                        <div 
-                                            className="profit-bar bg-green-500"
-                                            style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalProducts/financialMetrics.totalRevenue)*100}%` : '0%' }}
-                                        ></div>
-                                    </div>
-                                    <div className="flex justify-between text-[9px] mt-1">
-                                        <span className="text-red-400">Custo real: {formatCurrency(financialMetrics.productsCost)}</span>
-                                        <span className="text-green-400">Lucro real: {formatCurrency(financialMetrics.productsProfit)}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Indicadores de Performance */}
-                            <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                     INDICADORES DE PERFORMANCE
-                                </p>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="text-center p-3 bg-black/20 rounded-lg">
-                                        <p className="text-2xl font-usarmy text-white">{financialMetrics.totalOrders}</p>
-                                        <p className="text-[9px] text-gray-500">Total de Ordens</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/20 rounded-lg">
-                                        <p className="text-2xl font-usarmy text-white">{financialMetrics.ordersWithServices}</p>
-                                        <p className="text-[9px] text-gray-500">Com Serviços</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/20 rounded-lg">
-                                        <p className="text-2xl font-usarmy text-white">{financialMetrics.servicesCount}</p>
-                                        <p className="text-[9px] text-gray-500">Serviços Realizados</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/20 rounded-lg">
-                                        <p className="text-2xl font-usarmy text-white">{financialMetrics.partsCount}</p>
-                                        <p className="text-[9px] text-gray-500">Peças Utilizadas</p>
-                                    </div>
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">EVOLUÇÃO RECENTE</p>
+                                <div className="space-y-3">
+                                    {financialMetrics.dailyBreakdown.length === 0 ? (
+                                        <p className="text-center text-gray-600 text-sm py-4">Nenhum dado no período</p>
+                                    ) : financialMetrics.dailyBreakdown.map(([date, data]) => {
+                                        const maxProfit = Math.max(...financialMetrics.dailyBreakdown.map(([,d]) => Math.abs(d.profit)), 1);
+                                        return (
+                                            <div key={date}>
+                                                <div className="flex justify-between text-[10px] mb-1">
+                                                    <span className="text-gray-400">{new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')}</span>
+                                                    <span className={data.profit >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrency(data.profit)}</span>
+                                                </div>
+                                                <div className="profit-bar-container">
+                                                    <div className={data.profit >= 0 ? 'profit-bar bg-green-500' : 'profit-bar bg-red-500'} style={{ width: `${Math.max(5, Math.abs(data.profit) / maxProfit * 100)}%` }}></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* TAB: DETALHAMENTO */}
-                    {activeTab === 'breakdown' && (
+                    {activeTab === 'ranking' && (
                         <div className="space-y-4">
-                            {/* Análise de Custos vs Receitas */}
                             <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                   ANÁLISE DE CUSTOS VS RECEITAS
-                                </p>
-
-                                <div className="space-y-4">
-                                    <div className="breakdown-item p-3 rounded-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-white">Receita Bruta</span>
-                                            <span className="text-[#d4af37] font-bold font-mono">
-                                                {formatCurrency(financialMetrics.totalRevenue + financialMetrics.totalDiscounts)}
-                                            </span>
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">TOP 5 OS MAIS LUCRATIVAS</p>
+                                <div className="space-y-3">
+                                    {financialMetrics.topOrders.length === 0 ? (
+                                        <p className="text-center text-gray-600 text-sm py-4">Nenhuma OS no período</p>
+                                    ) : financialMetrics.topOrders.map((item, index) => (
+                                        <div key={item.osNumber} className="breakdown-item p-4 rounded-lg">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${index === 0 ? 'gold-gradient' : 'bg-white/10'}`}>
+                                                        <span className={`font-usarmy text-sm ${index === 0 ? 'text-black' : 'text-white'}`}>{index + 1}</span>
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm text-white font-bold truncate">OS #{item.osNumber} • {item.customerName}</p>
+                                                        <p className="text-[9px] text-gray-500 truncate">{item.equipment}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className="text-green-400 font-bold font-mono">{formatCurrency(item.netProfit)}</p>
+                                                    <p className="text-[9px] text-gray-500">{item.margin.toFixed(1)}%</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="profit-bar-container">
-                                            <div className="profit-bar bg-[#d4af37]" style={{ width: '100%' }}></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="breakdown-item p-3 rounded-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-red-400">(-) Descontos Concedidos</span>
-                                            <span className="text-red-400 font-bold font-mono">
-                                                -{formatCurrency(financialMetrics.totalDiscounts)}
-                                            </span>
-                                        </div>
-                                        <div className="profit-bar-container">
-                                            <div 
-                                                className="profit-bar bg-red-500" 
-                                                style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalDiscounts/(financialMetrics.totalRevenue + financialMetrics.totalDiscounts))*100}%` : '0%' }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="breakdown-item p-3 rounded-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-white">(=) Receita Líquida</span>
-                                            <span className="text-[#d4af37] font-bold font-mono">
-                                                {formatCurrency(financialMetrics.totalRevenue)}
-                                            </span>
-                                        </div>
-                                        <div className="profit-bar-container">
-                                            <div 
-                                                className="profit-bar bg-blue-500" 
-                                                style={{ width: '100%' }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="breakdown-item p-3 rounded-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-red-400">(-) Custos Reais</span>
-                                            <span className="text-red-400 font-bold font-mono">
-                                                -{formatCurrency(financialMetrics.totalCosts)}
-                                            </span>
-                                        </div>
-                                        <div className="profit-bar-container">
-                                            <div 
-                                                className="profit-bar bg-red-600" 
-                                                style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalCosts/financialMetrics.totalRevenue)*100}%` : '0%' }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="breakdown-item p-3 rounded-lg metric-highlight">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm text-green-400 font-bold">(=) LUCRO REAL</span>
-                                            <span className="text-green-400 font-bold font-mono text-lg">
-                                                {formatCurrency(financialMetrics.totalProfit)}
-                                            </span>
-                                        </div>
-                                        <div className="profit-bar-container">
-                                            <div 
-                                                className="profit-bar bg-green-500" 
-                                                style={{ width: financialMetrics.totalRevenue > 0 ? `${(financialMetrics.totalProfit/financialMetrics.totalRevenue)*100}%` : '0%' }}
-                                            ></div>
-                                        </div>
-                                        <p className="text-[9px] text-center text-gray-400 mt-2">
-                                            Margem de Lucro: {financialMetrics.profitMargin}%
-                                        </p>
-                                    </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* Top Equipamentos */}
                             <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                    TOP EQUIPAMENTOS (RECEITA)
-                                 </p>
-
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">TOP EQUIPAMENTOS POR LUCRO</p>
                                 <div className="space-y-2">
                                     {financialMetrics.equipmentBreakdown.length === 0 ? (
                                         <p className="text-center text-gray-600 text-sm py-4">Nenhum dado disponível</p>
-                                    ) : (
-                                        financialMetrics.equipmentBreakdown.map(([equipment, data], index) => (
-                                            <div key={equipment} className="breakdown-item p-3 rounded-lg flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-[#d4af37] font-usarmy text-sm">#{index + 1}</span>
-                                                    <div>
-                                                        <p className="text-sm text-white font-bold">{equipment}</p>
-                                                        <p className="text-[9px] text-gray-500">{data.count} ordens</p>
-                                                    </div>
-                                                </div>
-                                                <span className="text-[#d4af37] font-bold font-mono">
-                                                    {formatCurrency(data.revenue)}
-                                                </span>
+                                    ) : financialMetrics.equipmentBreakdown.map(([equipment, data], index) => (
+                                        <div key={equipment} className="breakdown-item p-3 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm text-white font-bold">#{index + 1} {equipment}</p>
+                                                <p className="text-[9px] text-gray-500">{data.count} ordens • Receita {formatCurrency(data.revenue)}</p>
                                             </div>
-                                        ))
-                                    )}
+                                            <span className="text-green-400 font-bold font-mono">{formatCurrency(data.profit)}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* TAB: SERVIÇOS */}
-                    {activeTab === 'services' && (
+                    {activeTab === 'breakdown' && (
                         <div className="space-y-4">
-                            {/* Top Serviços Mais Lucrativos */}
                             <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                       TOP SERVIÇOS MAIS LUCRATIVOS
-                                      </p>
-
-                                <div className="space-y-3">
-                                    {financialMetrics.serviceBreakdown.length === 0 ? (
-                                        <p className="text-center text-gray-600 text-sm py-4">Nenhum serviço registrado</p>
-                                    ) : (
-                                        financialMetrics.serviceBreakdown.map(([serviceName, data], index) => (
-                                            <div key={serviceName} className="breakdown-item p-4 rounded-lg">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                                                            index === 0 ? 'gold-gradient' : 
-                                                            index === 1 ? 'bg-gray-600' : 
-                                                            index === 2 ? 'bg-orange-700' : 'bg-white/10'
-                                                        }`}>
-                                                            <span className={`font-usarmy text-sm ${index < 3 ? 'text-black' : 'text-white'}`}>
-                                                                {index + 1}
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm text-white font-bold">{serviceName}</p>
-                                                            <p className="text-[9px] text-gray-500">{data.count}x realizados</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[#d4af37] font-bold font-mono">
-                                                            {formatCurrency(data.revenue)}
-                                                        </p>
-                                                        <p className="text-[9px] text-green-400">
-                                                            Ticket médio: {formatCurrency(data.revenue / data.count)}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="profit-bar-container mt-2">
-                                                    <div 
-                                                        className="profit-bar bg-blue-500" 
-                                                        style={{ 
-                                                            width: financialMetrics.totalServices > 0 
-                                                                ? `${(data.revenue/financialMetrics.totalServices)*100}%` 
-                                                                : '0%' 
-                                                        }}
-                                                    ></div>
-                                                </div>
-                                                <p className="text-[9px] text-gray-500 mt-1 text-right">
-                                                    {financialMetrics.totalServices > 0 
-                                                        ? ((data.revenue/financialMetrics.totalServices)*100).toFixed(1) 
-                                                        : 0}% do faturamento de serviços
-                                                </p>
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">CUSTOS VS RECEITAS</p>
+                                <div className="space-y-4">
+                                    {[
+                                        ['Receita líquida', financialMetrics.totalRevenue, 'bg-[#d4af37]', 'text-[#d4af37]', 100],
+                                        ['Custo peças', financialMetrics.totalPartsCost, 'bg-red-500', 'text-red-400', financialMetrics.totalRevenue ? (financialMetrics.totalPartsCost / financialMetrics.totalRevenue) * 100 : 0],
+                                        ['Custo produtos', financialMetrics.totalProductsCost, 'bg-red-600', 'text-red-400', financialMetrics.totalRevenue ? (financialMetrics.totalProductsCost / financialMetrics.totalRevenue) * 100 : 0],
+                                        ['Custo operacional', financialMetrics.operationalCost, 'bg-yellow-500', 'text-yellow-400', financialMetrics.totalRevenue ? (financialMetrics.operationalCost / financialMetrics.totalRevenue) * 100 : 0],
+                                        ['Lucro líquido', financialMetrics.totalNetProfit, 'bg-green-500', 'text-green-400', financialMetrics.totalRevenue ? (financialMetrics.totalNetProfit / financialMetrics.totalRevenue) * 100 : 0]
+                                    ].map(([label, value, bar, text, width]) => (
+                                        <div key={label} className="breakdown-item p-3 rounded-lg">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className={`text-sm ${text}`}>{label}</span>
+                                                <span className={`${text} font-bold font-mono`}>{formatCurrency(value)}</span>
                                             </div>
-                                        ))
-                                    )}
+                                            <div className="profit-bar-container">
+                                                <div className={`profit-bar ${bar}`} style={{ width: safePercent(width) }}></div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* Resumo de Serviços */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <MetricCard title="CUSTO POR OS" value={formatCurrency(financialMetrics.costPerOrder)} subtitle="rateio operacional" icon="calculator" tone="yellow" />
+                                <MetricCard title="LUCRO BRUTO" value={formatCurrency(financialMetrics.totalGrossProfit)} subtitle="antes do operacional" icon="circle-dollar-sign" tone="green" />
+                            </div>
+
                             <div className="os-card p-5 rounded-xl">
-                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4
-                                    text-center">
-                                  RESUMO DE SERVIÇOS
-                                </p>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="text-center p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                                        <p className="text-xl font-usarmy text-blue-400">{financialMetrics.servicesCount}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Total de Serviços</p>
-                                    </div>
-                                    <div className="text-center p-4 bg-green-500/10 rounded-lg border border-green-500/20">
-                                        <p className="text-xl font-usarmy text-green-400">
-                                            {financialMetrics.servicesCount > 0 
-                                                ? formatCurrency(financialMetrics.totalServices / financialMetrics.servicesCount)
-                                                : formatCurrency(0)}
-                                        </p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Ticket Médio Serviço</p>
-                                    </div>
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">PEÇAS MAIS LUCRATIVAS</p>
+                                <div className="space-y-2">
+                                    {financialMetrics.partBreakdown.length === 0 ? (
+                                        <p className="text-center text-gray-600 text-sm py-4">Nenhuma peça registrada com custo/venda</p>
+                                    ) : financialMetrics.partBreakdown.map(([name, data], index) => (
+                                        <div key={name} className="breakdown-item p-3 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm text-white font-bold">#{index + 1} {name}</p>
+                                                <p className="text-[9px] text-gray-500">{data.count}x • Venda {formatCurrency(data.revenue)} • Custo {formatCurrency(data.cost)}</p>
+                                            </div>
+                                            <span className="text-green-400 font-bold font-mono">{formatCurrency(data.profit)}</span>
+                                        </div>
+                                    ))}
                                 </div>
+                            </div>
+                        </div>
+                    )}
 
-                                <div className="mt-4 p-4 bg-black/20 rounded-lg">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-sm text-gray-400">Faturamento em Serviços:</span>
-                                        <span className="text-[#d4af37] font-bold">{formatCurrency(financialMetrics.totalServices)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-400">% do Faturamento Total:</span>
-                                        <span className="text-blue-400 font-bold">
-                                            {financialMetrics.totalRevenue > 0 
-                                                ? ((financialMetrics.totalServices/financialMetrics.totalRevenue)*100).toFixed(1) 
-                                                : 0}%
-                                        </span>
-                                    </div>
+                    {activeTab === 'services' && (
+                        <div className="space-y-4">
+                            <div className="os-card p-5 rounded-xl">
+                                <p className="text-[10px] font-usarmy text-[#d4af37] mb-4 text-center">SERVIÇOS MAIS RENTÁVEIS</p>
+                                <div className="space-y-3">
+                                    {financialMetrics.serviceBreakdown.length === 0 ? (
+                                        <p className="text-center text-gray-600 text-sm py-4">Nenhum serviço registrado</p>
+                                    ) : financialMetrics.serviceBreakdown.map(([serviceName, data], index) => (
+                                        <div key={serviceName} className="breakdown-item p-4 rounded-lg">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${index === 0 ? 'gold-gradient' : index === 1 ? 'bg-gray-600' : index === 2 ? 'bg-orange-700' : 'bg-white/10'}`}>
+                                                        <span className={`font-usarmy text-sm ${index < 3 ? 'text-black' : 'text-white'}`}>{index + 1}</span>
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm text-white font-bold truncate">{serviceName}</p>
+                                                        <p className="text-[9px] text-gray-500">{data.count}x realizados</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className="text-[#d4af37] font-bold font-mono">{formatCurrency(data.profit)}</p>
+                                                    <p className="text-[9px] text-green-400">Média {formatCurrency(data.profit / data.count)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="profit-bar-container mt-2">
+                                                <div className="profit-bar bg-blue-500" style={{ width: safePercent(financialMetrics.totalServices > 0 ? (data.revenue / financialMetrics.totalServices) * 100 : 0) }}></div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <MetricCard title="SERVIÇOS" value={formatCurrency(financialMetrics.totalServices)} subtitle="mão de obra faturada" icon="wrench" tone="blue" />
+                                <MetricCard title="PEÇAS" value={formatCurrency(financialMetrics.totalParts)} subtitle={`lucro ${formatCurrency(financialMetrics.totalParts - financialMetrics.totalPartsCost)}`} icon="package" tone="gold" />
+                                <MetricCard title="PRODUTOS" value={formatCurrency(financialMetrics.totalProducts)} subtitle={`lucro ${formatCurrency(financialMetrics.totalProducts - financialMetrics.totalProductsCost)}`} icon="boxes" tone="green" />
+                                <MetricCard title="DESCONTOS" value={formatCurrency(financialMetrics.totalDiscounts)} subtitle="concedidos no período" icon="badge-percent" tone="red" />
                             </div>
                         </div>
                     )}
@@ -8694,7 +8585,6 @@
             );
         };
 
-        // ========== DASHBOARD MODIFICADO ==========
         const Dashboard = ({ orders, setView, clients, onOpenOrders }) => { 
             const stats = useMemo(() => {
                 const base = {
