@@ -1988,6 +1988,27 @@
             drawPdfWatermark(doc); let y=66;
             y=pdfSectionTitle(doc,'DADOS DO CLIENTE',y); const yClient=y; pdfInfoRow(doc,'Cliente',order.customerName,18,y,78); pdfInfoRow(doc,'Telefone',order.customerPhone,110,y,70); y=yClient+18;
 
+            // DADOS DO EQUIPAMENTO: seção restaurada no PDF da Ordem de Serviço.
+            // Antes o PDF pulava direto de dados do cliente para itens, deixando o equipamento fora do documento.
+            y+=4;
+            y=await pdfCheckPage(doc,y,50,'ORDEM DE SERVIÇO');
+            y=pdfSectionTitle(doc,'DADOS DO EQUIPAMENTO',y);
+            const yEquip=y;
+            pdfInfoRow(doc,'Equipamento',order.equipment,18,y,78);
+            pdfInfoRow(doc,'Etapa operacional',etapaPdf,110,y,70);
+            y=yEquip+18;
+            if (order.deliveredDate) {
+                y=pdfInfoRow(doc,'Data de retirada',order.deliveredDate,18,y,78)+2;
+            }
+            if (order.defects) {
+                y=await pdfCheckPage(doc,y,26,'ORDEM DE SERVIÇO');
+                y=pdfInfoRow(doc,'Defeito relatado',order.defects,18,y,170)+2;
+            }
+            if (order.techReport) {
+                y=await pdfCheckPage(doc,y,28,'ORDEM DE SERVIÇO');
+                y=pdfInfoRow(doc,'Laudo técnico',order.techReport,18,y,170)+2;
+            }
+
             y+=4; y=await pdfCheckPage(doc,y,50,'ORDEM DE SERVIÇO'); y=pdfSectionTitle(doc,'ITENS DA ORDEM',y);
             doc.setFillColor(238,238,238); doc.roundedRect(18,y-5,174,9,1.5,1.5,'F'); doc.setFont('courier','bold'); doc.setFontSize(7.5); doc.setTextColor(40,40,40); doc.text('TIPO',22,y); doc.text('DESCRIÇÃO',48,y); doc.text('QTD',145,y); doc.text('VALOR',170,y); y+=8;
             doc.setFont('courier','normal'); doc.setFontSize(8);
