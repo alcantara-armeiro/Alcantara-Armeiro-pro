@@ -1183,7 +1183,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
             <div className="modal-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Confirmação">
                 <div className="modal-content p-6" onClick={e => e.stopPropagation()}>
                     <div className="flex flex-col items-center text-center gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-full border border-yellow-500/30 flex items-center justify-center overflow-hidden">
+                        <div className="w-16 h-16 rounded-full border border-yellow-500/30 flex items-center justify-center overflow-visible">
                             <img src={LOGO_URL} className="w-full h-full object-cover logo-premium-animated" />
                         </div>
                         <div>
@@ -4491,8 +4491,8 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                     {/* ── Wallet Cards ── */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         {/* Personal wallet */}
-                        <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a1a3e 0%,#0f0f2d 100%)',border:'1px solid rgba(99,102,241,0.3)'}}>
-                            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10" style={{background:'#6366f1',transform:'translate(30%,-30%)'}}></div>
+                        <div className="rounded-2xl p-4 relative overflow-visible" style={{background:'#1a1a1a',border:'1px solid rgba(99,102,241,0.3)'}}>
+                            
                             <div className="flex items-center gap-2 mb-3">
                                 <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(99,102,241,0.2)'}}>
                                     <BankUiIcon name="user" size={14} color="#6366f1" />
@@ -4508,8 +4508,8 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             </div>
                         </div>
                         {/* Workshop wallet */}
-                        <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a1500 0%,#0f0d00 100%)',border:'1px solid rgba(212,175,55,0.3)'}}>
-                            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10" style={{background:'#d4af37',transform:'translate(30%,-30%)'}}></div>
+                        <div className="rounded-2xl p-4 relative overflow-visible" style={{background:'#1a1a1a',border:'1px solid rgba(212,175,55,0.3)'}}>
+                            
                             <div className="flex items-center gap-2 mb-3">
                                 <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(212,175,55,0.15)'}}>
                                     <BankUiIcon name="wrench" size={14} color="#d4af37" />
@@ -4875,7 +4875,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             </div>
                             {/* Urgent alerts */}
                             {billsAlerts.filter(b=>b.urgent||b.overdue).length > 0 && (
-                                <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
+                                <div className="rounded-xl overflow-visible" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
                                     <div className="p-2 flex items-center gap-2" style={{background:'rgba(234,179,8,0.1)'}}>
                                         <BankUiIcon name="shield-alert" size={16} color="#facc15" />
                                         <span className="font-usarmy text-yellow-400 text-xs">CONTAS URGENTES</span>
@@ -5809,7 +5809,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             <p className="text-[10px] text-gray-500 -mt-1">Se preencher site, o card abre o site. Se preencher só o celular, o card abre no WhatsApp.</p>
                             <div className="grid grid-cols-2 gap-3">
                                 <button type="button" onClick={() => { setForm({ ...emptyForm }); setEditingId(null); }} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">LIMPAR</button>
-                                <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>{editingId ? 'SALVAR' : 'CADASTRAR'}</button>
+                                <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>{editingId ? 'SALVAR' : 'CADASTRAR'}</button>
                             </div>
                         </form>
                     </div>
@@ -6239,7 +6239,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                     />
                                     <div className="grid grid-cols-2 gap-3">
                                         <button type="button" onClick={() => setSearchTerm('')} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">LIMPAR BUSCA</button>
-                                        <button type="button" onClick={openCreate} className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>+ NOVA ASSISTÊNCIA</button>
+                                        <button type="button" onClick={openCreate} className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>+ NOVA ASSISTÊNCIA</button>
                                     </div>
                                 </div>
                             </div>
@@ -6395,7 +6395,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <button type="button" onClick={() => { resetForm(); setScreen('list'); }} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
-                                    <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>
+                                    <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>
                                         {editingId ? 'SALVAR' : 'CADASTRAR'}
                                     </button>
                                 </div>
@@ -6673,7 +6673,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">{title}</p>
                             <p className="text-[9px] text-gray-500 font-mono">{subtitle}</p>
                         </div>
-                        <div className="w-11 h-11 rounded-full overflow-hidden border border-[#d4af37]/30">
+                        <div className="w-11 h-11 rounded-full overflow-visible border border-[#d4af37]/30">
                             <img src={LOGO_URL} className="w-full h-full object-cover logo-premium-animated" />
                         </div>
                     </div>
@@ -7404,7 +7404,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                         type="button"
                         onClick={() => setView('gestao_calculadora')}
                         className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                        style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
+                        style={{ background:'#1a1a1a', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow:'none' }}
                     >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-orange-400"></i>
@@ -7420,7 +7420,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                         type="button"
                         onClick={openTechCalculators}
                         className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                        style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
+                        style={{ background:'#1a1a1a', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow:'none' }}
                     >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <i data-lucide="gauge" className="w-6 h-6 shrink-0 text-blue-400"></i>
@@ -7764,7 +7764,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                 <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center px-8">
                     <div
                         className="absolute inset-0 opacity-25"
-                        style={{backgroundImage: 'radial-gradient(circle at center, rgba(80,60,10,0.35) 0%, #050505 55%, #000 100%)'}}
+                        style={{background:'#1a1a1a'}}
                     ></div>
 
                     <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
@@ -8589,7 +8589,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                 }, 140);
                             }}
                             className="w-full mb-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                            style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
+                            style={{ background:'#1a1a1a', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow:'none' }}
                         >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <i data-lucide="plus-circle" className="w-6 h-6 shrink-0 text-orange-400"></i>
@@ -8629,7 +8629,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                 }
                             }}
                             className="w-full mt-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                            style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
+                            style={{ background:'#1a1a1a', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow:'none' }}
                         >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-blue-400"></i>
@@ -8674,12 +8674,12 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                     <div className="w-full mt-2">
                                     <button
                                         onClick={() => setView('alcantara_bank')}
-                                        className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-0"
-                                        style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
+                                        className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-visible border border-[#f5d36a]/50 mt-0"
+                                        style={{ boxShadow:'none' }}
                                     >
                                         <span
                                             className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
+                                            style={{ background:'#1a1a1a', transform:'none' }}
                                         ></span>
                                         <span className="relative z-10 flex items-center justify-center gap-2">
                                             <i data-lucide="landmark" className="w-4 h-4"></i>
