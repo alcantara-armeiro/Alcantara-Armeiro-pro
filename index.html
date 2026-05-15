@@ -586,6 +586,34 @@
         }
 
     </style>
+
+<style>
+.tech-calculator-input{
+    font-size:16px !important;
+    transform:translateZ(0);
+    -webkit-user-select:text;
+    user-select:text;
+    touch-action:manipulation;
+}
+
+.tech-calculator-input:focus{
+    outline:none !important;
+    border-color:#d4af37 !important;
+    box-shadow:0 0 0 2px rgba(212,175,55,0.25) !important;
+}
+
+input.tech-calculator-input{
+    appearance:textfield;
+    -moz-appearance:textfield;
+}
+
+input.tech-calculator-input::-webkit-outer-spin-button,
+input.tech-calculator-input::-webkit-inner-spin-button{
+    -webkit-appearance:none;
+    margin:0;
+}
+</style>
+
 </head>
 
 <body>
@@ -4459,7 +4487,7 @@
                                 <p className="font-usarmy text-[#d4af37] text-xs mb-3">EDITAR ITEM DO PLANO</p>
                                 <div className="space-y-3">
                                     <input className="w-full p-3 rounded-xl" placeholder="Nome da conta" value={debtItemForm.label} onChange={e=>setDebtItemForm(prev=>({...prev,label:e.target.value}))} />
-                                    <input type="number" step="0.01" className="w-full p-3 rounded-xl" placeholder="Valor" value={debtItemForm.value} onChange={e=>setDebtItemForm(prev=>({...prev,value:e.target.value}))} />
+                                    <input type="text" inputMode="decimal" step="0.01" className="w-full p-3 rounded-xl" placeholder="Valor" value={debtItemForm.value} onChange={e=>setDebtItemForm(prev=>({...prev,value:e.target.value}))} />
                                     {debtItemForm.section === 'currentMonthCritical' && (
                                         <>
                                             <input className="w-full p-3 rounded-xl" placeholder="Vencimento" value={debtItemForm.due} onChange={e=>setDebtItemForm(prev=>({...prev,due:e.target.value}))} />
@@ -4525,8 +4553,7 @@
                             ['fixas','FIXAS','calendar-clock'],
                             ['cartoes','CARTÕES','credit-card'],
                             ['fechamento','CAIXA','shield'],
-                            ['relatorios','RELATÓRIO','bar-chart-2'],
-                            ['estrategia','ESTRATÉGIA','target']
+                            ['relatorios','RELATÓRIO','bar-chart-2']
                         ].map(([key,label,icon])=>(
                             <button key={key} onClick={()=>setTab(key)}
                                 className={`p-2.5 rounded-xl text-[9px] font-usarmy relative ${tab===key ? 'gold-gradient' : 'bg-white/5 text-gray-400 border border-white/10'}`}>
@@ -4583,482 +4610,6 @@
                         </div>
                     )}
 
-
-                    {/* ════════════════ TAB: ESTRATÉGIA ════════════════ */}
-                    {tab === 'estrategia' && (
-                        <div className="space-y-4 animate-fadeIn">
-                            <MonthNav />
-
-                            <div className="os-card p-4 rounded-xl" style={{border:'1px solid rgba(212,175,55,0.22)', background:'linear-gradient(145deg, #131006 0%, #0a0a0a 100%)'}}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="font-usarmy text-[#d4af37] text-xs">CENTRAL ESTRATÉGICA</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Análises, orçamento, plano de dívidas e leitura tática do mês.</p>
-                                    </div>
-                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#d4af37]/10 border border-[#d4af37]/20">
-                                        <BankUiIcon name="target" size={20} color="#d4af37" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="rounded-xl p-3" style={{background:tacticalPressure.bg,border:`1px solid ${tacticalPressure.border}`}}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p className="text-[9px] font-usarmy" style={{color:tacticalPressure.color}}>NÍVEL TÁTICO V14</p>
-                                        <p className="text-sm font-bold text-white mt-0.5">{tacticalPressure.label}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">{tacticalPressure.hint}</p>
-                                    </div>
-                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:'rgba(0,0,0,0.18)'}}>
-                                        <BankUiIcon name="shield" size={20} color={tacticalPressure.color} />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="os-card p-4 rounded-xl" style={{border:'1px solid rgba(239,68,68,0.22)', background:'linear-gradient(145deg, #180d0d 0%, #0f0909 100%)'}}>
-                                <div className="flex items-start justify-between gap-3 mb-3">
-                                    <div>
-                                        <p className="text-[9px] font-usarmy text-red-400">PLANO DE DÍVIDAS • NÍVEL TÁTICO+</p>
-                                        <p className="text-sm font-bold text-white mt-0.5">Estratégia real integrada ao Bank</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Objetivo: fechar este mês sem colapso e entrar no próximo com a menor pressão possível, protegendo o caixa da oficina.</p>
-                                    </div>
-                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-500/10 border border-red-500/20">
-                                        <BankUiIcon name="shield-alert" size={20} color="#f87171" />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">PESSOAL AGORA</p>
-                                        <p className="font-usarmy text-[#818cf8] text-sm">{money(debtPlan.availablePersonal)}</p>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">OFICINA TOTAL</p>
-                                        <p className="font-usarmy text-[#d4af37] text-sm">{money(debtPlan.availableWorkshop)}</p>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">RESERVA PROTEGIDA</p>
-                                        <p className="font-usarmy text-yellow-400 text-sm">{money(debtPlan.protectedWorkshopReserve)}</p>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">APOIO TÁTICO</p>
-                                        <p className="font-usarmy text-orange-400 text-sm">{money(debtPlan.negotiableWorkshopSupport)}</p>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">SALÁRIO CERTO</p>
-                                        <p className="font-usarmy text-green-400 text-sm">{money(debtPlan.confirmedSalaryNextMonth)}</p>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl p-3 mb-3" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy text-white/70">RISCO DO PRÓXIMO MÊS</p>
-                                            <p className={`text-sm font-bold mt-0.5 ${debtPlan.riskTone}`}>{debtPlan.riskLevel}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] text-gray-500 font-mono">ROMBO A CORTAR</p>
-                                            <p className={`font-usarmy text-sm ${debtPlan.nextMonthProjectedGap > 0 ? 'text-red-400' : 'text-green-400'}`}>{money(Math.abs(debtPlan.nextMonthProjectedGap))}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
-                                    <div className="rounded-xl p-3" style={{background:'rgba(34,197,94,0.07)', border:'1px solid rgba(34,197,94,0.18)'}}>
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">PAGAMENTO À VISTA</p>
-                                        <p className="font-usarmy text-green-400 text-sm">{money(debtPlan.payNowCapacity)}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Já considerando reserva pessoal mínima.</p>
-                                    </div>
-                                    <div className="rounded-xl p-3" style={{background:'rgba(239,68,68,0.07)', border:'1px solid rgba(239,68,68,0.18)'}}>
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">FALTA DO CRÍTICO</p>
-                                        <p className={`font-usarmy text-sm ${debtPlan.criticalGapNow > 0 ? 'text-red-400' : 'text-green-400'}`}>{money(debtPlan.criticalGapNow)}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Se sobrar zero, o crítico fecha ainda neste mês.</p>
-                                    </div>
-                                    <div className="rounded-xl p-3" style={{background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.20)'}}>
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">PRESSÃO DE ACORDO</p>
-                                        <p className="font-usarmy text-orange-400 text-sm">{money(debtPlan.negotiationPressureNow)}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Quanto precisa virar acordo em vez de atraso seco.</p>
-                                    </div>
-                                    <div className="rounded-xl p-3" style={{background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.20)'}}>
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">COBERTURA PRÓX. MÊS</p>
-                                        <p className={`font-usarmy text-sm ${debtPlan.nextMonthCoverageRatio >= 100 ? 'text-green-400' : debtPlan.nextMonthCoverageRatio >= 85 ? 'text-yellow-400' : 'text-red-400'}`}>{debtPlan.nextMonthCoverageRatio.toFixed(0)}%</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Percentual da pressão coberto por salário + apoio tático.</p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[9px] font-usarmy text-green-400 mb-2">PAGAR NESTE MÊS</p>
-                                        <div className="space-y-1.5">
-                                            {debtPlan.currentMonthCritical.map(item => renderDebtItemRow(item, 'currentMonthCritical'))}
-                                        </div>
-                                        <div className="mt-3 pt-3 border-t border-white/10 space-y-1">
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Total crítico</span><span className="font-usarmy text-green-400">{money(debtPlan.currentCriticalTotal)}</span></div>
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Sobra do pessoal</span><span className={`font-usarmy ${debtPlan.personalLeftAfterCritical >= 0 ? 'text-[#818cf8]' : 'text-red-400'}`}>{money(debtPlan.personalLeftAfterCritical)}</span></div>
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Caixa útil pós-crítico</span><span className={`font-usarmy ${debtPlan.idealCashAfterCritical >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>{money(debtPlan.idealCashAfterCritical)}</span></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[9px] font-usarmy text-yellow-400 mb-2">NEGOCIAR ANTES DA VIRADA</p>
-                                        <div className="space-y-1.5">
-                                            {debtPlan.currentMonthNegotiation.map(item => renderDebtItemRow(item, 'currentMonthNegotiation'))}
-                                        </div>
-                                        <div className="mt-3 pt-3 border-t border-white/10 space-y-1">
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Carga em aberto</span><span className="font-usarmy text-yellow-400">{money(debtPlan.currentNegotiationTotal)}</span></div>
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Meta mínima de acordo</span><span className="font-usarmy text-orange-400">{money(debtPlan.minimumNegotiationTarget)}</span></div>
-                                            <div className="flex items-center justify-between text-[10px]"><span className="text-gray-500">Meta ideal de redução</span><span className="font-usarmy text-red-400">{money(debtPlan.settlementTarget)}</span></div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">BASE DO PRÓXIMO MÊS</p>
-                                        <p className="font-usarmy text-white text-sm">{money(debtPlan.nextMonthBaseTotal)}</p>
-                                        <div className="space-y-1.5 mt-2">
-                                            {debtPlan.nextMonthBase.map(item => renderDebtItemRow(item, 'nextMonthBase', `Previsto para ${monthLabel(nextMonthYM)}`))}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">PRESSÃO TOTAL</p>
-                                        <p className="font-usarmy text-red-400 text-sm">{money(debtPlan.nextMonthProjectedPressure)}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Base do mês seguinte + pendências que sobraram deste mês.</p>
-                                    </div>
-                                    <div className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                        <p className="text-[8px] text-gray-500 font-mono mb-1">FUNDO REAL DISPONÍVEL</p>
-                                        <p className="font-usarmy text-green-400 text-sm">{money(debtPlan.nextMonthProjectedFunds)}</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Salário certo + apoio tático da oficina, preservando a reserva protegida.</p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                                    {debtPlan.executionPhases.map(phase => (
-                                        <div key={phase.title} className="rounded-xl p-3 bg-white/5 border border-white/10">
-                                            <p className={`text-[9px] font-usarmy mb-1 ${phase.tone}`}>{phase.title}</p>
-                                            <p className="text-[9px] text-gray-500 mb-2">{phase.hint}</p>
-                                            <div className="space-y-1">
-                                                {phase.items.map(item => (
-                                                    <div key={item} className="text-[10px] text-gray-300">• {item}</div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="mt-3 rounded-xl p-3" style={{background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.22)'}}>
-                                    <p className="text-[9px] font-usarmy text-yellow-400 mb-2">ORDEM DE EXECUÇÃO</p>
-                                    <div className="space-y-2 mb-3">
-                                        {debtPlan.recommendedActions.map((step, index) => (
-                                            <div key={index} className="flex items-start gap-2 text-[10px]">
-                                                <span className="w-4 h-4 rounded-full bg-yellow-500/15 border border-yellow-500/25 flex items-center justify-center text-[8px] font-usarmy text-yellow-400 mt-0.5">{index + 1}</span>
-                                                <span className="text-gray-300">{step}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-white/10">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy text-orange-400 mb-2">PLAYBOOK SEMANAL</p>
-                                            <div className="space-y-1.5">
-                                                {debtPlan.weeklyPlaybook.map((step, index) => (
-                                                    <div key={index} className="text-[10px] text-gray-300">{step}</div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <p className="text-[9px] font-usarmy text-red-400 mb-2">NÃO PAGAR À VISTA</p>
-                                            <div className="space-y-1.5 mb-3">
-                                                {debtPlan.noCashList.map((item, index) => (
-                                                    <div key={index} className="text-[10px] text-gray-300">• {item}</div>
-                                                ))}
-                                            </div>
-                                            <p className="text-[9px] font-usarmy text-blue-400 mb-2">SCRIPT DE NEGOCIAÇÃO</p>
-                                            <div className="space-y-1.5">
-                                                {debtPlan.negotiationScripts.map((step, index) => (
-                                                    <div key={index} className="text-[10px] text-gray-300">{step}</div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-3 rounded-xl p-3" style={{background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.18)'}}>
-                                    <div className="flex items-center justify-between gap-3 mb-2">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy text-blue-400">CALENDÁRIO DE ATAQUE</p>
-                                            <p className="text-[9px] text-gray-500 mt-1">Sequência recomendada para executar o plano sem apertar demais o caixa.</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] text-gray-500 font-mono">GAP BASE PRÓX. MÊS</p>
-                                            <p className={`font-usarmy text-sm ${debtPlan.nextMonthEssentialGap > 0 ? 'text-yellow-400' : 'text-green-400'}`}>{money(debtPlan.nextMonthEssentialGap)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        {debtPlan.attackCalendar.map((step, index) => (
-                                            <div key={index} className="rounded-xl p-3 bg-black/20 border border-white/10">
-                                                <p className="text-[8px] text-gray-500 font-mono mb-1">JANELA {step.window}</p>
-                                                <p className="text-[10px] text-white mb-2">{step.focus}</p>
-                                                <p className="font-usarmy text-blue-400 text-sm">{money(step.target)}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <div className="rounded-xl p-3" style={{background:'rgba(34,197,94,0.07)', border:'1px solid rgba(34,197,94,0.22)'}}>
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy text-green-400">SEMÁFORO FINANCEIRO</p>
-                                            <p className="text-sm font-bold text-white mt-0.5">{financialTraffic.label}</p>
-                                            <p className="text-[9px] text-gray-500 mt-1">{financialTraffic.hint}</p>
-                                        </div>
-                                        <BankUiIcon name="traffic-cone" size={20} color={financialTraffic.color} />
-                                    </div>
-                                </div>
-                                <div className="rounded-xl p-3" style={{background:'rgba(168,85,247,0.08)', border:'1px solid rgba(168,85,247,0.25)'}}>
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy" style={{color:workshopWithdrawalRadar.tone}}>RETIRADA DA OFICINA</p>
-                                            <p className="text-sm font-bold text-white mt-0.5">{workshopWithdrawalRadar.status}</p>
-                                            <p className="text-[9px] text-gray-500 mt-1">{workshopWithdrawalRadar.hint}</p>
-                                        </div>
-                                        <BankUiIcon name="arrow-down-left" size={20} color={workshopWithdrawalRadar.tone} />
-                                    </div>
-                                    <div className="mt-3">
-                                        <ProgressBar value={workshopWithdrawalRadar.spent} total={workshopWithdrawalRadar.limit} color={workshopWithdrawalRadar.tone} />
-                                        <div className="flex justify-between text-[8px] text-gray-500 mt-1">
-                                            <span>Usado {money(workshopWithdrawalRadar.spent)}</span>
-                                            <span>{workshopWithdrawalRadar.remaining >= 0 ? `Folga ${money(workshopWithdrawalRadar.remaining)}` : `Estouro ${money(Math.abs(workshopWithdrawalRadar.remaining))}`}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <div className="os-card p-4 rounded-xl">
-                                    <p className="text-[8px] text-gray-500 font-mono mb-1">PODE GASTAR HOJE</p>
-                                    <p className="font-usarmy text-green-400 text-sm">{money(dashboardIntelligence.safeSpendToday)}</p>
-                                    <p className="text-[9px] text-gray-500 mt-2">Distribuição segura do orçamento para os próximos {dashboardIntelligence.remainingDays} dia(s).</p>
-                                </div>
-                                <div className="os-card p-4 rounded-xl">
-                                    <p className="text-[8px] text-gray-500 font-mono mb-1">GERAR NA OFICINA</p>
-                                    <p className="font-usarmy text-[#d4af37] text-sm">{money(dashboardIntelligence.workshopTarget)}</p>
-                                    <p className="text-[9px] text-gray-500 mt-2">Meta para cobrir o caixa da oficina e segurar retiradas acima do limite.</p>
-                                </div>
-                                <div className="os-card p-4 rounded-xl">
-                                    <p className="text-[8px] text-gray-500 font-mono mb-1">PRESSÃO PESSOAL</p>
-                                    <p className={`font-usarmy text-sm ${dashboardIntelligence.personalGap > 0 ? 'text-red-400' : 'text-green-400'}`}>{money(dashboardIntelligence.personalGap)}</p>
-                                    <p className="text-[9px] text-gray-500 mt-2">Quanto o pessoal ainda precisa ajustar para fechar o mês sem aperto.</p>
-                                </div>
-                            </div>
-
-                            <div className="os-card p-4 rounded-xl">
-                                <div className="flex items-center justify-between mb-3">
-                                    <p className="font-usarmy text-[#d4af37] text-xs">FECHAMENTO DE CAIXA</p>
-                                    <span className="text-[8px] text-gray-500 font-mono">HOJE • SEMANA • MÊS</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {[
-                                        ['HOJE', periodStats.today],
-                                        ['SEMANA', periodStats.week],
-                                        ['MÊS', periodStats.month]
-                                    ].map(([label, stats]) => (
-                                        <div key={label} className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <p className="text-[9px] font-usarmy text-white">{label}</p>
-                                                <p className={`font-usarmy text-xs ${stats.geral >= 0 ? 'text-green-400' : 'text-red-400'}`}>{money(stats.geral)}</p>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2 text-[9px]">
-                                                <div className="rounded-lg p-2" style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.18)'}}>
-                                                    <p style={{color:'#818cf8'}} className="font-usarmy text-[8px] mb-1">PESSOAL</p>
-                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.pessoal.entrada)}</span></div>
-                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.pessoal.saida)}</span></div>
-                                                    <div className="flex justify-between text-white mt-1"><span>Saldo</span><span>{money(stats.pessoal.saldo)}</span></div>
-                                                </div>
-                                                <div className="rounded-lg p-2" style={{background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.18)'}}>
-                                                    <p style={{color:'#d4af37'}} className="font-usarmy text-[8px] mb-1">OFICINA</p>
-                                                    <div className="flex justify-between text-gray-400"><span>Entradas</span><span className="text-green-400">{money(stats.oficina.entrada)}</span></div>
-                                                    <div className="flex justify-between text-gray-400"><span>Saídas</span><span className="text-red-400">{money(stats.oficina.saida)}</span></div>
-                                                    <div className="flex justify-between text-white mt-1"><span>Saldo</span><span>{money(stats.oficina.saldo)}</span></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3">
-                                <div className="rounded-xl p-4" style={{background:'rgba(168,85,247,0.08)',border:'1px solid rgba(168,85,247,0.28)'}}>
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>RETIRADAS PESSOAIS DA OFICINA</p>
-                                            <p className="text-lg font-usarmy text-white mt-1">{money(monthlySummary.personalViaWorkshop)}</p>
-                                            <p className="text-[9px] text-gray-500 mt-1">Tudo que saiu da oficina para cobrir uso pessoal neste mês.</p>
-                                        </div>
-                                        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{background:'rgba(168,85,247,0.14)'}}>
-                                            <BankUiIcon name="arrow-down-left" size={20} color="#a855f7" />
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 grid grid-cols-2 gap-2 text-[9px]">
-                                        <button onClick={()=>{ setTab('lancamentos'); setForm(p=>{ const draft={...p, area:'oficina', type:'saida', description:'', isPersonalExpense:true, categoryManual:false}; return {...draft, category:inferSmartCategory(draft)}; }); }}
-                                            className="p-2.5 rounded-xl border text-white font-usarmy"
-                                            style={{borderColor:'rgba(168,85,247,0.28)', background:'rgba(168,85,247,0.08)'}}>
-                                            NOVA RETIRADA
-                                        </button>
-                                        <button onClick={()=>{ setTab('extratos'); setFilterArea('oficina'); setFilterType('saida'); setSearch(''); }}
-                                            className="p-2.5 rounded-xl border border-white/10 text-gray-300 font-usarmy bg-black/20">
-                                            VER SAÍDAS OFICINA
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Cross-area alert */}
-                            {monthlySummary.personalViaWorkshop > 0 && (
-                                <div className="rounded-xl p-3 flex items-center gap-3" style={{background:'rgba(168,85,247,0.08)',border:'1px solid rgba(168,85,247,0.3)'}}>
-                                    <BankUiIcon name="arrow-left-right" size={16} color="#a855f7" />
-                                    <div>
-                                        <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>GASTOS PESSOAIS VIA OFICINA</p>
-                                        <p className="text-sm font-bold text-white">{money(monthlySummary.personalViaWorkshop)}</p>
-                                        <p className="text-[9px] text-gray-500">Retiradas e uso pessoal de materiais da oficina</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Sync status */}
-                            <div className="os-card p-4 rounded-xl">
-                                <div className="flex items-center justify-between mb-3">
-                                    <p className="font-usarmy text-[#d4af37] text-xs">SYNC COM OFICINA</p>
-                                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="bg-white/5 rounded-lg p-3">
-                                        <p className="text-[8px] text-gray-500 font-mono">OS IMPORTADAS</p>
-                                        <p className="text-sm font-bold text-white mt-0.5">{transactions.filter(t=>t.syncSource==='office').length}</p>
-                                    </div>
-                                    <div className="bg-white/5 rounded-lg p-3">
-                                        <p className="text-[8px] text-gray-500 font-mono">RECEITA SYNC</p>
-                                        <p className="text-sm font-bold text-green-400 mt-0.5">{money(transactions.filter(t=>t.syncSource==='office').reduce((s,t)=>s+Number(t.value||0),0))}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Cash-flow mini chart */}
-                            <div className="os-card p-4 rounded-xl">
-                                <p className="font-usarmy text-[#d4af37] text-xs mb-3">FLUXO DE CAIXA — {monthLabel(selectedMonth).toUpperCase()}</p>
-                                <div className="flex items-end gap-0.5" style={{height:60}}>
-                                    {cashFlowDays.filter(d=>d.in>0||d.out>0).slice(-20).map(d=>(
-                                        <div key={d.day} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`Dia ${d.day}`}>
-                                            <div style={{width:'100%',height:`${pct(d.in,maxCashFlow)*0.55}px`,minHeight:d.in>0?2:0,background:'rgba(34,197,94,0.6)',borderRadius:2}}></div>
-                                            <div style={{width:'100%',height:`${pct(d.out,maxCashFlow)*0.55}px`,minHeight:d.out>0?2:0,background:'rgba(239,68,68,0.5)',borderRadius:2}}></div>
-                                        </div>
-                                    ))}
-                                    {cashFlowDays.every(d=>d.in===0&&d.out===0) && (
-                                        <p className="text-center w-full text-gray-600 text-xs font-usarmy">SEM MOVIMENTOS</p>
-                                    )}
-                                </div>
-                                <div className="flex gap-4 mt-2">
-                                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="w-2 h-2 rounded-sm bg-green-500/60"></span>Entrada</span>
-                                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="w-2 h-2 rounded-sm bg-red-500/50"></span>Saída</span>
-                                </div>
-                            </div>
-
-                            {/* Budget settings */}
-                            <div className="os-card p-4 rounded-xl">
-                                <div className="flex items-center justify-between gap-3 mb-3">
-                                    <div>
-                                        <p className="font-usarmy text-[#d4af37] text-xs">ORÇAMENTO INTELIGENTE</p>
-                                        <p className="text-[9px] text-gray-500 mt-1">Define o teto seguro de gastos do mês. O app compara suas saídas com esse limite e avisa quando entrar em alerta.</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-[8px] text-gray-500 font-mono">STATUS GERAL</p>
-                                        <p className="font-usarmy text-xs" style={{color:budgetRadar.totalTone}}>{budgetRadar.totalStatus}</p>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl p-3 mb-3" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-[8px] text-gray-500 font-mono">LIMITE TOTAL DO MÊS</p>
-                                            <p className="font-usarmy text-white text-sm mt-1">{money(budgetRadar.totalBudget)}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] text-gray-500 font-mono">GASTO ACUMULADO</p>
-                                            <p className="font-usarmy text-sm mt-1" style={{color:budgetRadar.totalTone}}>{money(budgetRadar.totalSpent)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="mt-3">
-                                        <ProgressBar value={budgetRadar.totalSpent} total={budgetRadar.totalBudget} color={budgetRadar.totalTone} />
-                                        <div className="flex justify-between text-[8px] text-gray-500 mt-1">
-                                            <span>{pct(budgetRadar.totalSpent, budgetRadar.totalBudget)}% usado</span>
-                                            <span className={budgetRadar.totalRemaining >= 0 ? 'text-green-400' : 'text-red-400'}>{budgetRadar.totalRemaining >= 0 ? 'FOLGA' : 'ESTOURO'} {money(Math.abs(budgetRadar.totalRemaining))}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl p-3 mb-3" style={{background:'rgba(168,85,247,0.07)', border:'1px solid rgba(168,85,247,0.22)'}}>
-                                    <div className="flex items-start justify-between gap-3 mb-2">
-                                        <div>
-                                            <p className="text-[9px] font-usarmy" style={{color:'#a855f7'}}>LIMITE DE RETIRADA DA OFICINA</p>
-                                            <p className="text-[8px] text-gray-500 mt-1">Controla retiradas e uso pessoal saindo do caixa da oficina.</p>
-                                        </div>
-                                        <p className="font-usarmy text-[10px]" style={{color:workshopWithdrawalRadar.tone}}>{workshopWithdrawalRadar.status}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 items-end">
-                                        <div>
-                                            <label className="text-[8px] text-gray-500 font-mono block mb-1">LIMITE MENSAL</label>
-                                            <input type="number" inputMode="decimal" value={withdrawalLimit} onChange={e=>setWithdrawalLimit(Math.max(0, Number(e.target.value||0)))} className="w-full rounded-xl px-3 py-3" />
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] text-gray-500 font-mono">RETIRADO NO MÊS</p>
-                                            <p className="font-usarmy text-sm text-white mt-1">{money(workshopWithdrawalRadar.spent)}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-3">
-                                    {[budgetRadar.pessoal, budgetRadar.oficina].map(meta => (
-                                        <div key={meta.label} className="rounded-xl p-3" style={{background:'rgba(255,255,255,0.03)', border:`1px solid ${meta.tone}33`}}>
-                                            <div className="flex items-start justify-between gap-3 mb-2">
-                                                <div>
-                                                    <label className="text-[9px] font-mono flex items-center gap-1 mb-2" style={{color:meta.color}}>
-                                                        <BankUiIcon name={meta.icon} size={12} color="currentColor" /> {meta.label}
-                                                    </label>
-                                                    <p className="text-[8px] text-gray-500">{meta.hint}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-[8px] text-gray-500 font-mono">STATUS</p>
-                                                    <p className="font-usarmy text-[10px]" style={{color:meta.tone}}>{meta.status}</p>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3 items-end">
-                                                <div>
-                                                    <input type="number" inputMode="decimal" value={meta.label === 'PESSOAL' ? budgets.personal : budgets.workshop}
-                                                        onChange={e=>setBudgets(p=>meta.label === 'PESSOAL' ? ({...p,personal:parseFloat(e.target.value)||0}) : ({...p,workshop:parseFloat(e.target.value)||0}))}
-                                                        className="w-full p-3 rounded-xl text-sm" />
-                                                    <p className="text-[8px] text-gray-500 mt-1 font-mono">LIMITE CONFIGURADO</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-[8px] text-gray-500 font-mono">GASTO DO MÊS</p>
-                                                    <p className="font-usarmy text-sm text-white mt-1">{money(meta.spent)}</p>
-                                                    <p className={`text-[8px] mt-1 ${meta.remaining >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                        {meta.remaining >= 0 ? 'RESTANTE' : 'ACIMA'} {money(Math.abs(meta.remaining))}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="mt-3">
-                                                <ProgressBar value={meta.spent} total={meta.budget} color={meta.color} />
-                                                <div className="flex justify-between text-[8px] text-gray-500 mt-1">
-                                                    <span>{pct(meta.spent, meta.budget)}% do limite</span>
-                                                    <span style={{color:meta.tone}}>{meta.status}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* ════════════════ TAB: LANÇAMENTOS (FORM) ════════════════ */}
                     {tab === 'lancamentos' && (
@@ -5167,7 +4718,7 @@
                                     </div>
                                     <div>
                                         <p className="text-[9px] text-gray-500 font-mono mb-1">VALOR (R$)</p>
-                                        <input type="number" inputMode="decimal" step="0.01" min="0"
+                                        <input type="text" inputMode="decimal" inputMode="decimal" step="0.01" min="0"
                                             value={form.value} placeholder="0,00"
                                             onChange={e=>setForm(p=>({...p,value:e.target.value}))}
                                             className="w-full p-3 rounded-xl text-sm" />
@@ -5395,7 +4946,7 @@
                                         </div>
                                         <div>
                                             <p className="text-[9px] text-gray-500 font-mono mb-1">VALOR (R$)</p>
-                                            <input type="number" inputMode="decimal" step="0.01" value={billForm.value} placeholder="0,00"
+                                            <input type="text" inputMode="decimal" inputMode="decimal" step="0.01" value={billForm.value} placeholder="0,00"
                                                 onChange={e=>setBillForm(p=>({...p,value:e.target.value}))}
                                                 className="w-full p-3 rounded-xl text-sm" />
                                         </div>
@@ -5572,13 +5123,13 @@
                                             <div className="grid grid-cols-2 gap-3 mb-3">
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">LIMITE (opcional)</p>
-                                                    <input type="number" inputMode="decimal" step="0.01" value={cardForm.limit} placeholder="0,00"
+                                                    <input type="text" inputMode="decimal" inputMode="decimal" step="0.01" value={cardForm.limit} placeholder="0,00"
                                                         onChange={e=>setCardForm(p=>({...p,limit:e.target.value}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">VENCIMENTO</p>
-                                                    <input type="number" min="1" max="31" value={cardForm.dueDay} placeholder="Dia"
+                                                    <input type="text" inputMode="decimal" min="1" max="31" value={cardForm.dueDay} placeholder="Dia"
                                                         onChange={e=>setCardForm(p=>({...p,dueDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
@@ -5586,13 +5137,13 @@
                                             <div className="grid grid-cols-2 gap-3 mb-4">
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">FECHAMENTO</p>
-                                                    <input type="number" min="1" max="31" value={cardForm.closingDay} placeholder="Dia"
+                                                    <input type="text" inputMode="decimal" min="1" max="31" value={cardForm.closingDay} placeholder="Dia"
                                                         onChange={e=>setCardForm(p=>({...p,closingDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">MELHOR DIA DE COMPRA</p>
-                                                    <input type="number" min="1" max="31" value={cardForm.bestPurchaseDay} placeholder="Dia"
+                                                    <input type="text" inputMode="decimal" min="1" max="31" value={cardForm.bestPurchaseDay} placeholder="Dia"
                                                         onChange={e=>setCardForm(p=>({...p,bestPurchaseDay:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
                                                 </div>
@@ -5741,7 +5292,7 @@
                                                 </div>
                                                 <div>
                                                     <p className="text-[9px] text-gray-500 font-mono mb-1">VALOR TOTAL (R$)</p>
-                                                    <input type="number" inputMode="decimal" step="0.01" min="0"
+                                                    <input type="text" inputMode="decimal" inputMode="decimal" step="0.01" min="0"
                                                         value={cardEntryForm.totalValue}
                                                         onChange={e=>setCardEntryForm(prev=>({...prev,totalValue:e.target.value}))}
                                                         className="w-full p-3 rounded-xl text-sm" />
@@ -5772,7 +5323,7 @@
                                                     <div className="mt-3 grid grid-cols-2 gap-3">
                                                         <div>
                                                             <p className="text-[9px] text-gray-500 font-mono mb-1">QUANTIDADE DE PARCELAS</p>
-                                                            <input type="number" min="2" max="48" value={cardEntryForm.installmentCount}
+                                                            <input type="text" inputMode="decimal" min="2" max="48" value={cardEntryForm.installmentCount}
                                                                 onChange={e=>setCardEntryForm(prev=>({...prev,installmentCount:e.target.value.replace(/\D/g,'').slice(0,2)}))}
                                                                 className="w-full p-3 rounded-xl text-sm" />
                                                         </div>
@@ -5804,7 +5355,7 @@
                                                     <div className="grid grid-cols-2 gap-3 mt-3">
                                                         <div>
                                                             <p className="text-[9px] text-gray-500 font-mono mb-1">GERAR POR MESES</p>
-                                                            <input type="number" min="1" max="120" value={cardEntryForm.recurrenceMonths}
+                                                            <input type="text" inputMode="decimal" min="1" max="120" value={cardEntryForm.recurrenceMonths}
                                                                 onChange={e=>setCardEntryForm(prev=>({...prev,recurrenceMonths:e.target.value.replace(/\D/g,'').slice(0,3)}))}
                                                                 className="w-full p-3 rounded-xl text-sm" />
                                                         </div>
@@ -6197,7 +5748,7 @@
                     showToast(wasEditing ? '✅ Fornecedor atualizado' : '✅ Fornecedor cadastrado', 'success');
 
                     try {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        window.scrollTo({ top: 0 });
                     } catch (scrollError) {
                         window.scrollTo(0, 0);
                     }
@@ -6218,7 +5769,7 @@
                 });
                 setEditingId(partner?.id || null);
                 try {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0 });
                 } catch (scrollError) {
                     window.scrollTo(0, 0);
                 }
@@ -6501,7 +6052,7 @@
                 resetForm();
                 setScreen('form');
                 try {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0 });
                 } catch (error) {
                     window.scrollTo(0, 0);
                 }
@@ -6584,7 +6135,7 @@
                     resetForm();
                     setScreen('list');
                     try {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        window.scrollTo({ top: 0 });
                     } catch (error) {
                         window.scrollTo(0, 0);
                     }
@@ -6601,7 +6152,7 @@
                     setForm({ ...buildEmpty(), ...record });
                     setEditingId(record.id);
                     setScreen('form');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0 });
                 } catch (error) {
                     console.error('Erro ao editar assistência:', error);
                     showToast('⚠️ Erro ao abrir cadastro para edição', 'error');
@@ -6844,7 +6395,7 @@
                                 <div className="rounded-xl border border-[#d4af37]/20 p-3 bg-[#d4af37]/5 space-y-3">
                                     <p className="text-[10px] font-usarmy text-[#d4af37]">REPASSE DA ASSISTÊNCIA PARA O BANK</p>
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                        <input type="number" step="0.01" min="0" value={form.repasseValue} onChange={(e) => updateForm({ repasseValue: e.target.value })} placeholder="Valor de repasse" className="w-full p-3 rounded-xl" />
+                                        <input type="text" inputMode="decimal" step="0.01" min="0" value={form.repasseValue} onChange={(e) => updateForm({ repasseValue: e.target.value })} placeholder="Valor de repasse" className="w-full p-3 rounded-xl" />
                                         <input type="date" value={form.finalizedAt || ''} onChange={(e) => updateForm({ finalizedAt: e.target.value, repasseDueDate: addDaysIso(e.target.value, 28) })} className="w-full p-3 rounded-xl" />
                                         <input type="date" value={form.repasseDueDate || ''} onChange={(e) => updateForm({ repasseDueDate: e.target.value })} className="w-full p-3 rounded-xl" />
                                     </div>
@@ -6892,7 +6443,14 @@
 
         // ========== ALCANTARA TECH — DASHBOARD NATIVO ALCANTARA ==========
         const AlcantaraTechIntegrated = ({ onBack }) => {
-            const [techView, setTechView] = useState('home');
+            const [techView, setTechView] = useState(() => {
+                const directView = SafeStorage.getItem('__alcantara_tech_direct_view');
+                if (directView) {
+                    SafeStorage.removeItem('__alcantara_tech_direct_view');
+                    return directView;
+                }
+                return 'home';
+            });
             const [energyForm, setEnergyForm] = useState({ mode: 'fps', weight: '0.20', value: '350' });
             const [rofForm, setRofForm] = useState({ rpm: '30000', ratio: '18', efficiency: '78' });
             const [volumeForm, setVolumeForm] = useState({ cylDiameter: '23.8', cylLength: '72', barrelDiameter: '6.03', barrelLength: '300' });
@@ -6949,7 +6507,7 @@
                 setEditingMaintenanceId(record.id);
                 setSelectedMaintenanceId(null);
                 setTechView('links');
-                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
+                setTimeout(() => window.scrollTo({ top: 0 }), 80);
             };
             const deleteMaintenanceRecord = (id) => {
                 const nextList = maintenances.filter(item => item.id !== id);
@@ -6998,7 +6556,7 @@
             };
 
             const techCards = [
-                { key: 'calculadoras', label: 'CALCULADORAS', sublabel: 'FPS • JOULE • ROF', icon: 'calculator', cardClass: 'card-missoes', textClass: 'text-blue-400' },
+                { key: 'calculadoras', label: 'CALCULADORAS', sublabel: 'CILINDRO • CANO', icon: 'calculator', cardClass: 'card-missoes', textClass: 'text-blue-400' },
                 { key: 'guias', label: 'GUIAS TÉCNICOS', sublabel: 'SHIMMING E VEDAÇÃO', icon: 'book-open', cardClass: 'card-faturamento', textClass: 'text-orange-400' },
                 { key: 'desmontagem', label: 'DESMONTAGEM', sublabel: 'GEARBOX V2 / V3', icon: 'settings', cardClass: 'card-pagas', textClass: 'text-green-400' },
                 { key: 'eletrica', label: 'ELÉTRICA', sublabel: 'MOSFET E FIAÇÃO', icon: 'zap', cardClass: 'card-custos', textClass: 'text-red-400' },
@@ -7456,7 +7014,7 @@
                 if (view === 'create') {
                     const goTop = () => {
                         try {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            window.scrollTo({ top: 0 });
                         } catch (e) {
                             window.scrollTo(0, 0);
                         }
@@ -7573,6 +7131,7 @@
                         case 'tools':
                         case 'management':
                         case 'gestao_home':
+                        case 'calculadoras_hub':
                         case 'profit_analysis':
                         case 'bench_shortcut':
                         case 'assistencia_tecnica':
@@ -7588,11 +7147,15 @@
                             }
                             break;
 
+                        case 'tech_calculadora':
+                            setView('calculadoras_hub');
+                            break;
+
                         case 'gestao_calculadora':
                         case 'gestao_fornecedores':
                         case 'gestao_pecas':
                         case 'gestao_ferramentas':
-                            setView('gestao_home');
+                            setView('calculadoras_hub');
                             break;
 
                         default:
@@ -7771,23 +7334,32 @@
                         )}
 
                         {view === 'gestao_home' && (
-                            <GestaoHome onBack={() => setView('dashboard')} setView={setView} />
+                            <GestaoCalculadora onBack={() => setView('dashboard')} onHome={() => setView('dashboard')} />
+                        )}
+
+                        {view === 'calculadoras_hub' && (
+                            <CalculadorasHub onBack={() => setView('dashboard')} setView={setView} />
                         )}
 
                         {view === 'gestao_calculadora' && (
-                            <GestaoCalculadora onBack={() => setView('gestao_home')} onHome={() => setView('gestao_home')} />
+                            <GestaoCalculadora onBack={() => setView('calculadoras_hub')} onHome={() => setView('dashboard')} />
+                        )}
+
+
+                        {view === 'tech_calculadora' && (
+                            <TechCalculadora onBack={() => setView('calculadoras_hub')} onHome={() => setView('dashboard')} />
                         )}
 
                         {view === 'gestao_fornecedores' && (
-                            <GestaoFornecedores onBack={() => setView('gestao_home')} onHome={() => setView('gestao_home')} />
+                            <GestaoCalculadora onBack={() => setView('dashboard')} onHome={() => setView('dashboard')} />
                         )}
 
                         {view === 'gestao_pecas' && (
-                            <GestaoPecas onBack={() => setView('gestao_home')} onHome={() => setView('gestao_home')} />
+                            <GestaoCalculadora onBack={() => setView('dashboard')} onHome={() => setView('dashboard')} />
                         )}
 
                         {view === 'gestao_ferramentas' && (
-                            <GestaoFerramentas onBack={() => setView('gestao_home')} onHome={() => setView('gestao_home')} />
+                            <GestaoCalculadora onBack={() => setView('dashboard')} onHome={() => setView('dashboard')} />
                         )}
 
 
@@ -7812,13 +7384,222 @@
                         )}
 
                         {view === 'alcantara_tech' && (
-                            <AlcantaraTechIntegrated onBack={() => setView('dashboard')} />
+                            <TechCalculadora onBack={() => setView('calculadoras_hub')} onHome={() => setView('dashboard')} />
                         )}
 
                         {view === 'profit_analysis' && (
                             <ProfitAnalysis onBack={() => setView('dashboard')} orders={orders} />
                         )}
                     </main>
+                </div>
+            );
+        };
+
+
+        const CalculadorasHub = ({ onBack, setView }) => {
+            useEffect(() => {
+                setTimeout(() => { try { if (window.lucide) lucide.createIcons(); } catch (_) {} }, 40);
+            }, []);
+
+            const openTechCalculators = () => {
+                setView('tech_calculadora');
+                try { window.scrollTo({ top: 0 }); } catch (e) { window.scrollTo(0, 0); }
+            };
+
+            return (
+                <div className="animate-fadeIn space-y-4 pb-10">
+                    <button onClick={onBack} className="flex items-center gap-2 text-[#d4af37] mb-2 font-usarmy text-xs">
+                        <i data-lucide="arrow-left" className="w-4 h-4"></i> VOLTAR
+                    </button>
+
+                    <div className="text-center os-card rounded-xl p-5 border border-white/5">
+                        <i data-lucide="calculator" className="w-9 h-9 mx-auto text-[#d4af37] mb-3"></i>
+                        <h2 className="font-usarmy text-[#d4af37] text-lg">CALCULADORAS</h2>
+                        <p className="text-gray-500 text-xs mt-1">Gestão e Calculadora Tech</p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setView('gestao_calculadora')}
+                        className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
+                        style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
+                    >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-orange-400"></i>
+                            <div className="text-left">
+                                <p className="text-[12px] leading-tight font-usarmy text-orange-400">CALCULADORA DE GESTÃO</p>
+                                <p className="text-[9px] leading-tight text-gray-500 mt-1 font-bold tracking-[0.08em]">MARGEM • VENDA • CUSTO</p>
+                            </div>
+                        </div>
+                        <i data-lucide="arrow-right" className="w-5 h-5 shrink-0 text-orange-400"></i>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={openTechCalculators}
+                        className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
+                        style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
+                    >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <i data-lucide="gauge" className="w-6 h-6 shrink-0 text-blue-400"></i>
+                            <div className="text-left">
+                                <p className="text-[12px] leading-tight font-usarmy text-blue-400">CALCULADORA TECH</p>
+                                <p className="text-[9px] leading-tight text-gray-500 mt-1 font-bold tracking-[0.08em]">CILINDRO • CANO • CILINDRO</p>
+                            </div>
+                        </div>
+                        <i data-lucide="arrow-right" className="w-5 h-5 shrink-0 text-blue-400"></i>
+                    </button>
+                </div>
+            );
+        };
+
+
+        const TechCalculadora = ({ onBack, onHome }) => {
+            const [cylinderForm, setCylinderForm] = useState({
+                barrelLength: '300',
+                barrelDiameter: '6.03',
+                cylinderDiameter: '23.8',
+                cylinderLength: '72'
+            });
+
+            useEffect(() => {
+                setTimeout(() => { try { if (window.lucide) lucide.createIcons(); } catch (_) {} }, 40);
+            }, []);
+
+            const n = (value) => Number(String(value || '').replace(',', '.')) || 0;
+            const round = (value, digits = 2) => Number.isFinite(value) ? value.toFixed(digits) : '0.00';
+
+            const updateCylinder = useCallback((field, value) => {
+                setCylinderForm(prev => ({ ...prev, [field]: value }));
+            }, []);
+
+            const cylinderResult = useMemo(() => {
+                const barrelLength = n(cylinderForm.barrelLength);
+                const barrelDiameter = n(cylinderForm.barrelDiameter);
+                const cylinderDiameter = n(cylinderForm.cylinderDiameter);
+                const cylinderLength = n(cylinderForm.cylinderLength);
+
+                if (!barrelLength || !barrelDiameter || !cylinderDiameter || !cylinderLength) return null;
+
+                const barrelVolume = Math.PI * Math.pow(barrelDiameter / 2, 2) * barrelLength;
+                const cylinderVolume = Math.PI * Math.pow(cylinderDiameter / 2, 2) * cylinderLength;
+                const ratio = cylinderVolume / barrelVolume;
+
+                let status = 'EQUILIBRADO';
+                let text = 'Relação boa para uso geral. Ajuste final depende de vedação, hop-up, bucking, nozzle e potência desejada.';
+                let bbs = '0.28g a 0.32g';
+                let bbsNote = 'Boa faixa para precisão com volume equilibrado.';
+
+                if (ratio < 1.60) {
+                    status = 'VOLUME BAIXO';
+                    text = 'O cilindro está com pouco volume para esse cano. Pode perder eficiência, principalmente com BB mais pesada.';
+                    bbs = '0.20g a 0.25g';
+                    bbsNote = 'Evite BB pesada nesse conjunto ou reduza o comprimento do cano/aumente o volume.';
+                } else if (ratio < 1.85) {
+                    status = 'LEVE / RÁPIDO';
+                    text = 'Relação utilizável para configuração mais leve. Funciona melhor com BB média e cano não muito longo.';
+                    bbs = '0.25g a 0.28g';
+                    bbsNote = 'Boa escolha para resposta rápida e uso mais geral.';
+                } else if (ratio < 2.15) {
+                    status = 'EQUILIBRADO';
+                    text = 'Relação bem equilibrada para a maioria dos setups. Boa eficiência entre volume de cilindro e cano.';
+                    bbs = '0.28g a 0.32g';
+                    bbsNote = 'Faixa recomendada para precisão e estabilidade.';
+                } else if (ratio < 2.50) {
+                    status = 'FORTE / BB PESADA';
+                    text = 'Volume alto e aproveitável para BB mais pesada, desde que a vedação e o hop-up estejam bem ajustados.';
+                    bbs = '0.32g a 0.36g';
+                    bbsNote = 'Boa opção para setups de precisão e maior consistência.';
+                } else {
+                    status = 'VOLUME ALTO';
+                    text = 'Volume muito alto para esse cano. Pode haver desperdício de ar, ruído e turbulência se o conjunto não estiver bem casado.';
+                    bbs = '0.36g ou mais';
+                    bbsNote = 'Use BB pesada somente se o hop-up levantar bem; caso contrário, reduza volume ou ajuste o cano.';
+                }
+
+                return { barrelVolume, cylinderVolume, ratio, status, text, bbs, bbsNote };
+            }, [cylinderForm]);
+
+            const Field = useCallback(({ label, value, onChange, suffix }) => (
+                <label className="block">
+                    <span className="block text-[9px] font-usarmy text-gray-500 mb-1">{label}</span>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            enterKeyHint="done"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck="false"
+                            value={value}
+                            onChange={e => onChange(e.target.value)}
+                            className="tech-calculator-input w-full p-3 rounded-xl text-sm"
+                        />
+                        {suffix && <span className="text-[10px] font-usarmy text-[#d4af37] min-w-[34px]">{suffix}</span>}
+                    </div>
+                </label>
+            ), []);
+
+            const ResultBox = ({ title, value, sub }) => (
+                <div className="rounded-xl p-3 border border-white/10 bg-black/20">
+                    <p className="text-[8px] font-usarmy text-gray-500 mb-1">{title}</p>
+                    <p className="font-usarmy text-[#d4af37] text-lg leading-tight">{value}</p>
+                    {sub && <p className="text-[10px] text-gray-500 mt-1">{sub}</p>}
+                </div>
+            );
+
+            return (
+                <div className="animate-fadeIn space-y-4 pb-10">
+                    <div className="flex items-center justify-between gap-3">
+                        <button type="button" onClick={onBack} className="flex items-center gap-2 text-[#d4af37] font-usarmy text-xs">
+                            <i data-lucide="arrow-left" className="w-4 h-4"></i> VOLTAR
+                        </button>
+                        <button type="button" onClick={onHome} className="flex items-center gap-2 text-gray-500 font-usarmy text-xs">
+                            <i data-lucide="home" className="w-4 h-4"></i> DASHBOARD
+                        </button>
+                    </div>
+
+                    <div className="text-center os-card rounded-xl p-5 border border-white/5">
+                        <i data-lucide="box" className="w-10 h-10 mx-auto text-yellow-400 mb-3"></i>
+                        <h2 className="font-usarmy text-[#d4af37] text-lg">CILINDRO / CANO</h2>
+                        <p className="text-gray-500 text-xs mt-1">Volume, ratio e BB recomendada</p>
+                    </div>
+
+                    <div className="os-card rounded-xl p-4 border border-yellow-500/15 space-y-3">
+                        <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                            <i data-lucide="ruler" className="w-4 h-4 text-yellow-400"></i>
+                            <h3 className="font-usarmy text-yellow-400 text-xs">DADOS DO CONJUNTO</h3>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="CANO" value={cylinderForm.barrelLength} suffix="mm" onChange={v => updateCylinder('barrelLength', v)} />
+                            <Field label="DIÂM. CANO" value={cylinderForm.barrelDiameter} suffix="mm" onChange={v => updateCylinder('barrelDiameter', v)} />
+                            <Field label="DIÂM. CIL." value={cylinderForm.cylinderDiameter} suffix="mm" onChange={v => updateCylinder('cylinderDiameter', v)} />
+                            <Field label="CURSO CIL." value={cylinderForm.cylinderLength} suffix="mm" onChange={v => updateCylinder('cylinderLength', v)} />
+                        </div>
+
+                        {cylinderResult && (
+                            <>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <ResultBox title="RATIO" value={`${round(cylinderResult.ratio, 2)}x`} />
+                                    <ResultBox title="CANO" value={round(cylinderResult.barrelVolume / 1000, 2)} sub="cm³" />
+                                    <ResultBox title="CILINDRO" value={round(cylinderResult.cylinderVolume / 1000, 2)} sub="cm³" />
+                                </div>
+
+                                <div className="rounded-xl p-4 bg-black/20 border border-yellow-500/20">
+                                    <p className="text-[9px] font-usarmy text-yellow-400 mb-1">RESULTADO</p>
+                                    <p className="font-usarmy text-[#d4af37] text-sm">{cylinderResult.status}</p>
+                                    <p className="text-xs text-gray-400 leading-relaxed mt-2">{cylinderResult.text}</p>
+                                </div>
+
+                                <div className="rounded-xl p-4 bg-green-500/5 border border-green-500/20">
+                                    <p className="text-[9px] font-usarmy text-green-400 mb-1">BB ADEQUADA</p>
+                                    <p className="font-usarmy text-green-400 text-xl">{cylinderResult.bbs}</p>
+                                    <p className="text-xs text-gray-400 leading-relaxed mt-2">{cylinderResult.bbsNote}</p>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             );
         };
@@ -8350,11 +8131,11 @@
                         <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="text-[9px] text-gray-500 block mb-1">META DE LUCRO</label>
-                                <input type="number" value={monthlyGoal} onChange={(e) => persistGoal(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="12000" />
+                                <input type="text" inputMode="decimal" value={monthlyGoal} onChange={(e) => persistGoal(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="12000" />
                             </div>
                             <div>
                                 <label className="text-[9px] text-gray-500 block mb-1">CUSTO OPERACIONAL</label>
-                                <input type="number" value={operationalCost} onChange={(e) => persistOperationalCost(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="0" />
+                                <input type="text" inputMode="decimal" value={operationalCost} onChange={(e) => persistOperationalCost(e.target.value)} className="w-full p-2 rounded-lg text-sm" placeholder="0" />
                             </div>
                         </div>
 
@@ -8678,6 +8459,77 @@
                 }
             ];
 
+            const tacticalCards = [
+                {
+                    key: 'CLIENTES',
+                    label: 'CLIENTES',
+                    value: clients.length,
+                    cardClass: 'card-faturamento',
+                    textClass: 'text-orange-400',
+                    icon: 'users',
+                    onClick: () => setView('clients_list')
+                },
+                {
+                    key: 'FERRAMENTAS',
+                    label: 'FERRAMENTAS',
+                    value: 'ABRIR',
+                    cardClass: 'card-pagas',
+                    textClass: 'text-green-400',
+                    icon: 'wrench',
+                    onClick: () => setView('tools')
+                },
+                {
+                    key: 'CATALOGO',
+                    label: 'CATÁLOGO',
+                    value: 'BASE',
+                    cardClass: 'card-pendentes',
+                    textClass: 'text-yellow-400',
+                    icon: 'book-open',
+                    onClick: () => setView('catalog')
+                },
+                {
+                    key: 'MARKETPLACE',
+                    label: 'MARKETPLACE',
+                    value: 'ITENS',
+                    cardClass: 'card-pagas',
+                    textClass: 'text-green-400',
+                    icon: 'store',
+                    onClick: () => setView('products')
+                },
+                {
+                    key: 'ASSISTENCIA',
+                    label: 'ASSISTÊNCIA',
+                    value: 'ABRIR',
+                    cardClass: 'card-pagas',
+                    textClass: 'text-green-400',
+                    icon: 'shield-check',
+                    onClick: () => {
+                        setView('assistencia_tecnica');
+                        try {
+                            window.scrollTo({ top: 0 });
+                        } catch (e) {
+                            window.scrollTo(0, 0);
+                        }
+                    }
+                },
+                {
+                    key: 'FORNECEDORES',
+                    label: 'FORNECEDORES',
+                    value: 'BASE',
+                    cardClass: 'card-missoes',
+                    textClass: 'text-blue-400',
+                    icon: 'building-2',
+                    onClick: () => {
+                        setView('fornecedores');
+                        try {
+                            window.scrollTo({ top: 0 });
+                        } catch (e) {
+                            window.scrollTo(0, 0);
+                        }
+                    }
+                }
+            ];
+
             const operationalCards = [
                 {
                     key: 'TOTAL_MISSOES',
@@ -8728,15 +8580,7 @@
                         <p className="text-[9px] text-gray-500 tracking-[0.4em] font-bold">AIRSOFT REPAIRS</p>
                     </div>
 
-                    <div className="w-full flex justify-between items-center px-6 py-3 border-y border-green-500/30 bg-green-900/10">
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                            <span className="text-[9px] font-usarmy text-[#d4af37]">SISTEMA ATIVO</span>
-                        </div>
-                        <div className="flex items-center gap-3">                            
-                            <span className="text-[9px] font-usarmy text-[#d4af37]">UNIDADE SP</span>
-                        </div>
-                    </div>
+                    
 
                     
                     
@@ -8745,86 +8589,75 @@
                         CENTRO TÁTICO INTELIGENTE
                     </p>
 
-                    
-                    <div className="grid grid-cols-2 gap-3 w-full">
-                        {dashboardButtons.map(item => (
-                            <button key={item.label} onClick={item.onClick} className={`${item.cardClass} min-h-[100px] px-3 py-4 rounded-xl text-center transition-all active:scale-[0.98] hover:scale-[1.02]`}>
-                                <div className="flex items-center justify-center mb-2">
-                                    <i data-lucide={item.icon} className={`w-8 h-8 ${item.textClass}`}></i>
-                                </div>
-                                <p className={`text-[10px] font-usarmy mb-1 ${item.textClass}`}>{item.label}</p>
-                                <p className="text-[10px] text-gray-400 font-bold">{item.sublabel}</p>
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="w-full mt-3 space-y-3">
+                    <div className="w-full os-card rounded-xl p-3 border border-white/5">
                         <button
                             onClick={() => {
                                 setView('create');
                                 try {
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    window.scrollTo({ top: 0 });
                                 } catch (e) {
                                     window.scrollTo(0, 0);
                                 }
                                 setTimeout(() => {
                                     try {
-                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        window.scrollTo({ top: 0 });
                                     } catch (e) {
                                         window.scrollTo(0, 0);
                                     }
                                 }, 140);
                             }}
-                            className="w-full min-h-[86px] p-5 rounded-2xl font-usarmy text-white shadow-2xl border dashboard-premium-btn"
-                            style={{ background: 'linear-gradient(135deg, #8b6a14 0%, #d4af37 50%, #8b6a14 100%)', boxShadow: '0 0 16px rgba(212,175,55,0.34), 0 0 34px rgba(212,175,55,0.16)', borderColor: 'rgba(245,211,106,0.55)' }}
+                            className="w-full mb-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
+                            style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
                         >
-                            <span
-                                className="dashboard-premium-shine"
-                                style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)' }}
-                            ></span>
-                            <span className="dashboard-premium-inner">
-                                <i data-lucide="plus-circle" className="w-7 h-7 text-black"></i>
-                                <span className="text-left">
-                                    <span className="dashboard-premium-label block text-black/70"></span>
-                                    <span className="dashboard-premium-title block text-black text-sm">NOVA ORDEM</span>
-                                </span>
-                            </span>
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <i data-lucide="plus-circle" className="w-6 h-6 shrink-0 text-orange-400"></i>
+                                <div className="text-left">
+                                    <p className="text-[12px] leading-tight font-usarmy text-orange-400">NOVA ORDEM</p>
+                                   
+                                </div>
+                            </div>
+                            <i data-lucide="arrow-right" className="w-5 h-5 shrink-0 text-orange-400"></i>
                         </button>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            {[
-                                { label: 'ASSISTÊNCIA', sublabel: '', icon: 'shield-check', view: 'assistencia_tecnica' },
-                                { label: 'ALCANTARA TECH', sublabel: '', icon: 'cpu', view: 'alcantara_tech' },
-                                { label: 'FORNECEDORES', sublabel: '', icon: 'building-2', view: 'fornecedores' },
-                                { label: 'HIST. EQUIP.', sublabel: '', icon: 'database', view: 'equipment_history' }
-                            ].map(action => (
+                        <div className="grid grid-cols-2 gap-2">
+                            {tacticalCards.map(card => (
                                 <button
-                                    key={action.view}
-                                    onClick={() => {
-                                        setView(action.view);
-                                        try {
-                                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                                        } catch (e) {
-                                            window.scrollTo(0, 0);
-                                        }
-                                    }}
-                                    className="w-full p-4 rounded-xl font-usarmy text-white shadow-2xl border dashboard-premium-btn dashboard-premium-card"
-                                    style={{ background: 'linear-gradient(135deg, #1b2430 0%, #111821 52%, #0b1017 100%)', boxShadow: '0 0 12px rgba(212,175,55,0.14), 0 0 26px rgba(212,175,55,0.08)', borderColor: 'rgba(212,175,55,0.28)' }}
+                                    key={card.key}
+                                    type="button"
+                                    onClick={card.onClick}
+                                    className={`${card.cardClass} w-full px-3 py-2 rounded-xl border text-center min-h-[64px] flex items-center justify-between gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer`}
                                 >
-                                    <span
-                                        className="dashboard-premium-shine"
-                                        style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,231,160,0.16) 50%, rgba(255,255,255,0) 100%)' }}
-                                    ></span>
-                                    <span className="dashboard-premium-inner justify-start">
-                                        <i data-lucide={action.icon} className="w-5 h-5 text-[#d4af37]"></i>
-                                        <span className="text-left min-w-0">
-                                            <span className="dashboard-premium-label block">{action.sublabel}</span>
-                                            <span className="dashboard-premium-title block text-white">{action.label}</span>
-                                        </span>
-                                    </span>
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        <i data-lucide={card.icon} className={`w-4 h-4 shrink-0 drop-shadow-[0_0_4px_rgba(255,255,255,0.08)] ${card.textClass}`}></i>
+                                        <p className={`text-[9px] leading-tight font-usarmy text-left ${card.textClass}`}>{card.label}</p>
+                                    </div>
+                                    <p className={`text-[13px] leading-none font-usarmy shrink-0 ${card.textClass}`}>{card.value}</p>
                                 </button>
                             ))}
                         </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setView('calculadoras_hub');
+                                try {
+                                    window.scrollTo({ top: 0 });
+                                } catch (e) {
+                                    window.scrollTo(0, 0);
+                                }
+                            }}
+                            className="w-full mt-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
+                            style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
+                        >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-blue-400"></i>
+                                <div className="text-left">
+                                    <p className="text-[12px] leading-tight font-usarmy text-blue-400">CALCULADORAS</p>
+                                    <p className="text-[9px] leading-tight text-gray-500 mt-1 font-bold tracking-[0.08em]">CALCULADORA • CILINDRO • CANO</p>
+                                </div>
+                            </div>
+                            <i data-lucide="arrow-right" className="w-5 h-5 shrink-0 text-blue-400"></i>
+                        </button>
                     </div>
 
                     <div className="w-full os-card rounded-xl p-0 border border-white/5">
@@ -9070,7 +8903,7 @@
                         <div>
                             <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">PREÇO DE COMPRA (R$)</label>
                             <input 
-                                type="number" 
+                                type="text" inputMode="decimal" 
                                 step="0.01"
                                 placeholder="0,00" 
                                 value={calcCompra}
@@ -9081,7 +8914,7 @@
                         <div>
                             <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">MARGEM DE LUCRO (%)</label>
                             <input 
-                                type="number" 
+                                type="text" inputMode="decimal" 
                                 placeholder="60" 
                                 value={calcMargem}
                                 onChange={e => setCalcMargem(e.target.value)}
@@ -9322,7 +9155,7 @@
                     <div className="os-card p-5 space-y-4">
                         <p className="text-[10px] font-usarmy text-gray-500">MARGEM PADRÃO: {margemPadrao}%</p>
                         <input 
-                            type="number" 
+                            type="text" inputMode="decimal" 
                             value={margemPadrao} 
                             onChange={e => setMargemPadrao(Math.max(0, parseInt(e.target.value) || 0))}
                             className="w-full"
@@ -9340,10 +9173,10 @@
                                     <option value="">Selecione...</option>
                                     {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                                 </select>
-                                <input type="number" step="0.01" placeholder="Preço de compra" value={editando.precoCompra} onChange={e => setEditando({...editando, precoCompra: e.target.value})} />
+                                <input type="text" inputMode="decimal" step="0.01" placeholder="Preço de compra" value={editando.precoCompra} onChange={e => setEditando({...editando, precoCompra: e.target.value})} />
                                 <div className="relative">
                                     <input
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         min="0"
                                         max="999"
                                         placeholder={`Margem % (padrão: ${margemPadrao}%)`}
@@ -9366,10 +9199,10 @@
                                     <option value="">Selecione fornecedor...</option>
                                     {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                                 </select>
-                                <input type="number" step="0.01" placeholder="Preço de compra R$ *" value={form.precoCompra} onChange={e => setForm({...form, precoCompra: e.target.value})} />
+                                <input type="text" inputMode="decimal" step="0.01" placeholder="Preço de compra R$ *" value={form.precoCompra} onChange={e => setForm({...form, precoCompra: e.target.value})} />
                                 <div className="relative">
                                     <input
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         min="0"
                                         max="999"
                                         placeholder={`Margem % (padrão: ${margemPadrao}%)`}
@@ -10707,7 +10540,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                 />
                                 <div className={(type === 'part' || type === 'product') ? "grid grid-cols-[0.72fr_1fr_1fr] gap-2" : "grid grid-cols-[0.72fr_1fr] gap-2"}>
                                     <input 
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         min="1"
                                         className="w-full p-3 text-sm rounded-lg" 
                                         placeholder="Qtde" 
@@ -10716,7 +10549,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                         onChange={e => setTemp({...temp, quantity: e.target.value})} 
                                     />
                                     <input 
-                                        type="number" 
+                                        type="text" inputMode="decimal" 
                                         step="0.01"
                                         min="0"
                                         className="w-full p-3 text-sm rounded-lg" 
@@ -10727,7 +10560,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                     />
                                     {(type === 'part' || type === 'product') && (
                                         <input
-                                            type="number"
+                                            type="text" inputMode="decimal"
                                             step="0.01"
                                             min="0"
                                             className="w-full p-3 text-sm rounded-lg"
@@ -10969,7 +10802,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                                                 <div>
                                                     <label className="text-[10px] text-gray-500 block mb-2 tracking-[0.08em]">VALOR DO SINAL</label>
                                                     <input
-                                                        type="number"
+                                                        type="text" inputMode="decimal"
                                                         step="0.01"
                                                         min="0"
                                                         className="w-full p-4 rounded-xl text-sm"
@@ -11057,7 +10890,7 @@ const handleRemoveItem = useCallback((itemId, itemType) => {
                             {formData.discountType !== 'none' && (
                                 <div className="relative">
                                     <input 
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         step="0.01"
                                         min="0"
                                         max={formData.discountType === 'percentage' ? 100 : subtotal}
@@ -11558,7 +11391,7 @@ Alcantara Armeiro - Airsoft Repairs
                             />
                             <div className="flex gap-2">
                                 <input 
-                                    type="number" 
+                                    type="text" inputMode="decimal" 
                                     step="0.01"
                                     min="0"
                                     className="flex-1 p-4 rounded-lg text-sm" 
@@ -11609,7 +11442,7 @@ Alcantara Armeiro - Airsoft Repairs
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
                                 <input 
-                                    type="number" 
+                                    type="text" inputMode="decimal" 
                                     step="0.01"
                                     min="0"
                                     className="w-full p-4 rounded-lg text-sm pl-10" 
@@ -11783,7 +11616,7 @@ Alcantara Armeiro - Airsoft Repairs
                             </select>
 
                             <input 
-                                type="number"
+                                type="text" inputMode="decimal"
                                 min="0"
                                 className="w-full p-3 rounded-lg text-sm" 
                                 placeholder="Estoque inicial" 
@@ -11801,7 +11634,7 @@ Alcantara Armeiro - Airsoft Repairs
 
                         <div className="grid grid-cols-2 gap-3">
                             <input 
-                                type="number" 
+                                type="text" inputMode="decimal" 
                                 step="0.01"
                                 min="0"
                                 className="w-full p-3 rounded-lg text-sm" 
@@ -11938,7 +11771,7 @@ Alcantara Armeiro - Airsoft Repairs
                             <div>
                                 <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">PREÇO (R$)</label>
                                 <input 
-                                    type="number" 
+                                    type="text" inputMode="decimal" 
                                     step="0.01"
                                     min="0"
                                     className="w-full p-4 rounded-xl text-lg font-bold text-center"
@@ -11951,7 +11784,7 @@ Alcantara Armeiro - Airsoft Repairs
                             <div>
                                 <label className="text-[10px] font-usarmy text-gray-500 mb-2 block">ESTOQUE</label>
                                 <input 
-                                    type="number"
+                                    type="text" inputMode="decimal"
                                     min="0"
                                     className="w-full p-4 rounded-xl text-lg font-bold text-center"
                                     value={editData.stock}
@@ -12234,7 +12067,7 @@ Alcantara Armeiro - Airsoft Repairs
                     notes: record.notes || ''
                 });
                 try {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0 });
                 } catch (e) {
                     window.scrollTo(0, 0);
                 }
@@ -12485,14 +12318,7 @@ Alcantara Armeiro - Airsoft Repairs
                 }
             }, 500);
         });
-    </script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+    </script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 
 
 <!-- PATCH ALCANTARA: recarrega ícones Lucide após navegação interna da Tech -->
@@ -12544,5 +12370,6 @@ Alcantara Armeiro - Airsoft Repairs
 })();
 </script>
 
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
