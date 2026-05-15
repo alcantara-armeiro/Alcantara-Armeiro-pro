@@ -59,13 +59,7 @@
         .font-usarmy { font-family: 'Black Ops One', cursive; letter-spacing: 0.05em; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-        .gold-gradient { 
-            background: linear-gradient(135deg, #b8860b 0%, #d4af37 50%, #b8860b 100%);
-            background-size: 200% auto;
-            color: black;
-            font-weight: 700;
-            transition: all 0.3s ease;
-        }
+        .gold-gradient { background: #d4af37 !important; color: black !important; font-weight: 700 !important; }
         .gold-gradient:active { 
             background-position: right center;
             transform: scale(0.98);
@@ -91,8 +85,7 @@
         }
 
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+        
             to { opacity: 1; transform: translateY(0); }
         }
 
@@ -123,11 +116,10 @@
             padding: 12px 24px;
             border-radius: 12px;
             z-index: 1000;
-            animation: slideUp 0.3s ease-out;
+
         }
 
-        @keyframes slideUp {
-            from { opacity: 0; transform: translate(-50%, 20px); }
+        
             to { opacity: 1; transform: translate(-50%, 0); }
         }
 
@@ -137,23 +129,22 @@
             border-radius: 50%;
             width: 20px;
             height: 20px;
-            animation: spin 0.6s linear infinite;
+
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        
         }
 
         .modal-overlay {
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(4px);
+
             z-index: 100;
             display: flex;
             align-items: center;
             justify-content: center;
-            animation: fadeIn 0.2s ease-out;
+
         }
 
         .modal-content {
@@ -162,7 +153,7 @@
             border-radius: 16px;
             max-width: 90%;
             width: 400px;
-            animation: slideUp 0.3s ease-out;
+
         }
 
         .install-prompt {
@@ -178,7 +169,7 @@
             font-size: 14px;
             z-index: 9999;
             box-shadow: 0 8px 32px rgba(212, 175, 55, 0.3);
-            animation: slideUp 0.5s ease-out;
+
             display: flex;
             align-items: center;
             gap: 12px;
@@ -259,13 +250,12 @@
         }
 
         /* Animação de shake para erros */
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
+        
             25% { transform: translateX(-5px); }
             75% { transform: translateX(5px); }
         }
         .shake {
-            animation: shake 0.3s ease-in-out;
+
         }
 
         /* Scrollbar customizada */
@@ -284,7 +274,7 @@
         .profit-card {
             background: linear-gradient(145deg, #0d0d0d 0%, #0a0a0a 100%);
             border: 1px solid rgba(212, 175, 55, 0.15);
-            transition: all 0.3s ease;
+            transition: none !important;
         }
         .profit-card:hover {
             border-color: rgba(212, 175, 55, 0.4);
@@ -346,12 +336,11 @@
             transition: all 0.2s ease;
         }
         /* Indicador de alterações não salvas */
-        @keyframes pulse-gold {
-            0%, 100% { opacity: 1; }
+        
             50% { opacity: 0.4; }
         }
         .dirty-indicator {
-            animation: pulse-gold 1.5s ease-in-out infinite;
+
         }
 
         /* Campo de data com label flutuante */
@@ -420,8 +409,7 @@
         .cashflow-bar { border-radius: 2px; transition: height 0.4s ease; }
         .bill-urgent { border-color: rgba(234,179,8,0.4) !important; }
         .bill-overdue { border-color: rgba(239,68,68,0.4) !important; }
-        @keyframes pulse-badge {
-            0%, 100% { opacity: 1; transform: scale(1); }
+        
             50% { opacity: 0.7; transform: scale(1.1); }
         }
         .urgent-badge { animation: pulse-badge 1.5s ease-in-out infinite; }
@@ -431,7 +419,7 @@
             position: relative;
             overflow: hidden;
             transition: transform 0.18s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
-            will-change: transform;
+
         }
         .dashboard-premium-btn:hover {
             transform: translateY(-1px);
@@ -446,7 +434,7 @@
             left: -35%;
             width: 32%;
             pointer-events: none;
-            animation: shineSweep 2.4s linear infinite;
+
             transform: skewX(-20deg);
         }
         .dashboard-premium-btn .dashboard-premium-inner {
@@ -474,20 +462,16 @@
 
 
         /* SPLASH PREMIUM */
-        @keyframes splashLogoFloat {
-            0%, 100% { transform: translateY(0) scale(1); }
+        
             50% { transform: translateY(-4px) scale(1.01); }
         }
-        @keyframes splashFadeUp {
-            from { opacity: 0; transform: translateY(16px); }
+        
             to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes splashGlowPulse {
-            0%, 100% { opacity: 0.20; transform: scale(0.95); }
+        
             50% { opacity: 0.38; transform: scale(1.03); }
         }
-        @keyframes splashBarLoad {
-            0% { width: 0%; opacity: 0.6; }
+        
             100% { width: 100%; opacity: 1; }
         }
         .splash-logo-wrap {
@@ -495,7 +479,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            animation: splashLogoFloat 2.8s ease-in-out infinite;
+
         }
         .splash-logo-glow {
             position: absolute;
@@ -503,10 +487,10 @@
             border-radius: 9999px;
             background: radial-gradient(circle, rgba(212,175,55,0.26) 0%, rgba(212,175,55,0.10) 45%, rgba(212,175,55,0) 75%);
             filter: blur(18px);
-            animation: splashGlowPulse 2.6s ease-in-out infinite;
+
         }
         .splash-fade-up {
-            animation: splashFadeUp 0.7s ease-out both;
+
         }
         .splash-title-gold {
             color: #d4af37;
@@ -525,7 +509,7 @@
             height: 100%;
             border-radius: 9999px;
             background: linear-gradient(90deg, #8a6a10 0%, #d4af37 55%, #f0d77a 100%);
-            animation: splashBarLoad 1.9s ease-out forwards;
+
         }
 
     
@@ -547,7 +531,7 @@
             position:absolute;
             inset:-32%;
             background:radial-gradient(circle, rgba(212,175,55,0.20) 0%, rgba(143,184,90,0.10) 40%, rgba(212,175,55,0) 72%);
-            animation:logoPremiumPulse 2.6s ease-in-out infinite;
+
             pointer-events:none;
         }
         .logo-premium-animated::after{
@@ -566,17 +550,15 @@
                 rgba(255,255,255,0) 100%
             );
             transform:skewX(-20deg);
-            animation:logoPremiumShine 2.9s linear infinite;
+
             pointer-events:none;
         }
-        @keyframes logoPremiumShine{
-            0%{left:-70%;opacity:0;}
+        
             10%{opacity:1;}
             45%{opacity:1;}
             100%{left:145%;opacity:0;}
         }
-        @keyframes logoPremiumPulse{
-            0%,100%{transform:scale(0.94);opacity:0.72;}
+        
             50%{transform:scale(1.08);opacity:1;}
         }
         .assistencia-logo-premium{
@@ -12318,7 +12300,7 @@ Alcantara Armeiro - Airsoft Repairs
                 }
             }, 500);
         });
-    </script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+    </script>
 
 
 <!-- PATCH ALCANTARA: recarrega ícones Lucide após navegação interna da Tech -->
@@ -12370,6 +12352,6 @@ Alcantara Armeiro - Airsoft Repairs
 })();
 </script>
 
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+
 </body>
 </html>
