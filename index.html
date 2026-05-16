@@ -567,6 +567,18 @@
             border:2px solid rgba(111,143,66,0.38);
         }
 
+
+        /* BANK EXTRATO: sem animação no quadro/lista do extrato */
+        .bank-extrato-no-animation,
+        .bank-extrato-no-animation * {
+            animation: none !important;
+            transition: none !important;
+        }
+        .bank-extrato-no-animation *:hover,
+        .bank-extrato-no-animation *:active {
+            transform: none !important;
+        }
+
     </style>
 
 <style>
@@ -4732,7 +4744,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
                     {/* ════════════════ TAB: EXTRATOS ════════════════ */}
                     {tab === 'extratos' && (
-                        <div className="space-y-4 animate-fadeIn">
+                        <div className="space-y-4 bank-extrato-no-animation">
                             <MonthNav />
 
                             {/* Filters */}
