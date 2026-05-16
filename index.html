@@ -568,6 +568,69 @@
         }
 
 
+
+
+        /* CORREÇÃO DEFINITIVA BANK / ANDROID CHROME PWA
+           Remove efeitos que causam artefatos de GPU/renderização em alguns celulares. */
+        html, body, #root {
+            background: #050505 !important;
+        }
+
+        .bank-render-safe,
+        .bank-render-safe * {
+            animation: none !important;
+            transition: none !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            will-change: auto !important;
+            backface-visibility: visible !important;
+            -webkit-backface-visibility: visible !important;
+            perspective: none !important;
+            mix-blend-mode: normal !important;
+            text-shadow: none !important;
+        }
+
+        .bank-render-safe {
+            position: relative;
+            isolation: isolate;
+            contain: layout paint style;
+            background: #050505 !important;
+            overflow-x: hidden !important;
+        }
+
+        .bank-render-safe .logo-premium-animated::before,
+        .bank-render-safe .logo-premium-animated::after,
+        .bank-render-safe .dashboard-premium-shine {
+            content: none !important;
+            display: none !important;
+        }
+
+        .bank-render-safe .wallet-card,
+        .bank-render-safe .profit-card,
+        .bank-render-safe .os-card,
+        .bank-render-safe .metric-highlight,
+        .bank-render-safe .rounded-2xl,
+        .bank-render-safe .rounded-xl {
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        .bank-render-safe svg,
+        .bank-render-safe img,
+        .bank-render-safe canvas {
+            transform: none !important;
+            filter: none !important;
+            image-rendering: auto !important;
+        }
+
+        @supports (-webkit-touch-callout: none) {
+            .bank-render-safe { -webkit-transform: none !important; }
+        }
+
         /* BANK EXTRATO: sem animação no quadro/lista do extrato */
         .bank-extrato-no-animation,
         .bank-extrato-no-animation * {
@@ -607,6 +670,27 @@ input.tech-calculator-input::-webkit-inner-spin-button{
     margin:0;
 }
 </style>
+
+
+    <script>
+        // Mantém status/navigation bar em preto no Android/PWA quando o navegador respeita theme-color.
+        (function forceAndroidBarsBlack(){
+            try {
+                document.documentElement.style.backgroundColor = '#050505';
+                document.body.style.backgroundColor = '#050505';
+                const names = ['theme-color', 'background-color', 'msapplication-navbutton-color', 'apple-mobile-web-app-status-bar-style'];
+                names.forEach(name => {
+                    let meta = document.querySelector(`meta[name="${name}"]`);
+                    if (!meta) {
+                        meta = document.createElement('meta');
+                        meta.setAttribute('name', name);
+                        document.head.appendChild(meta);
+                    }
+                    meta.setAttribute('content', name === 'apple-mobile-web-app-status-bar-style' ? 'black-translucent' : '#050505');
+                });
+            } catch (_) {}
+        })();
+    </script>
 
 </head>
 
@@ -4450,7 +4534,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
             // ── RENDER ─────────────────────────────────────────────────────────
             return (
-                <div className="animate-fadeIn pb-6">
+                <div className="bank-render-safe pb-6">
                     {/* ── Header ── */}
                     <div className="flex items-center justify-between mb-4">
                         <button onClick={onBack} className="btn-icon text-gray-400" aria-label="Voltar">
