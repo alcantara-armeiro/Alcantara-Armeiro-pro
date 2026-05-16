@@ -567,81 +567,6 @@
             border:2px solid rgba(111,143,66,0.38);
         }
 
-
-
-
-        /* CORREÇÃO DEFINITIVA BANK / ANDROID CHROME PWA
-           Remove efeitos que causam artefatos de GPU/renderização em alguns celulares. */
-        html, body, #root {
-            background: #050505 !important;
-        }
-
-        .bank-render-safe,
-        .bank-render-safe * {
-            animation: none !important;
-            transition: none !important;
-            transform: none !important;
-            filter: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            will-change: auto !important;
-            backface-visibility: visible !important;
-            -webkit-backface-visibility: visible !important;
-            perspective: none !important;
-            mix-blend-mode: normal !important;
-            text-shadow: none !important;
-        }
-
-        .bank-render-safe {
-            position: relative;
-            isolation: isolate;
-            contain: layout paint style;
-            background: #050505 !important;
-            overflow-x: hidden !important;
-        }
-
-        .bank-render-safe .logo-premium-animated::before,
-        .bank-render-safe .logo-premium-animated::after,
-        .bank-render-safe .dashboard-premium-shine {
-            content: none !important;
-            display: none !important;
-        }
-
-        .bank-render-safe .wallet-card,
-        .bank-render-safe .profit-card,
-        .bank-render-safe .os-card,
-        .bank-render-safe .metric-highlight,
-        .bank-render-safe .rounded-2xl,
-        .bank-render-safe .rounded-xl {
-            transform: none !important;
-            filter: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-        }
-
-        .bank-render-safe svg,
-        .bank-render-safe img,
-        .bank-render-safe canvas {
-            transform: none !important;
-            filter: none !important;
-            image-rendering: auto !important;
-        }
-
-        @supports (-webkit-touch-callout: none) {
-            .bank-render-safe { -webkit-transform: none !important; }
-        }
-
-        /* BANK EXTRATO: sem animação no quadro/lista do extrato */
-        .bank-extrato-no-animation,
-        .bank-extrato-no-animation * {
-            animation: none !important;
-            transition: none !important;
-        }
-        .bank-extrato-no-animation *:hover,
-        .bank-extrato-no-animation *:active {
-            transform: none !important;
-        }
-
     </style>
 
 <style>
@@ -672,25 +597,180 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 </style>
 
 
-    <script>
-        // Mantém status/navigation bar em preto no Android/PWA quando o navegador respeita theme-color.
-        (function forceAndroidBarsBlack(){
-            try {
-                document.documentElement.style.backgroundColor = '#050505';
-                document.body.style.backgroundColor = '#050505';
-                const names = ['theme-color', 'background-color', 'msapplication-navbutton-color', 'apple-mobile-web-app-status-bar-style'];
-                names.forEach(name => {
-                    let meta = document.querySelector(`meta[name="${name}"]`);
-                    if (!meta) {
-                        meta = document.createElement('meta');
-                        meta.setAttribute('name', name);
-                        document.head.appendChild(meta);
-                    }
-                    meta.setAttribute('content', name === 'apple-mobile-web-app-status-bar-style' ? 'black-translucent' : '#050505');
-                });
-            } catch (_) {}
-        })();
-    </script>
+
+
+<style id="alcantara-final-exemplo-100">
+:root{
+  --aa-bg:#050505;
+  --aa-panel:#080808;
+  --aa-card:#050505;
+  --aa-gold:#d4af37;
+  --aa-gold-2:#e0bc43;
+  --aa-border:rgba(212,175,55,.68);
+  --aa-border-soft:rgba(212,175,55,.38);
+  --aa-muted:#9ca3af;
+  --aa-muted2:#6b7280;
+  --aa-red:#ff6b75;
+  --aa-green:#22c55e;
+}
+html,body,#root{background:var(--aa-bg)!important;color:var(--aa-muted)!important;}
+*{-webkit-tap-highlight-color:transparent!important;}
+/* Sem neon, sem animação, sem mudança ao tocar */
+*,*::before,*::after{animation:none!important;transition:none!important;text-shadow:none!important;box-shadow:none!important;}
+button:active,button:hover,button:focus,[role="button"]:active,[role="button"]:hover,[role="button"]:focus{transform:none!important;filter:none!important;box-shadow:none!important;outline:none!important;}
+.logo-premium-animated::before,.logo-premium-animated::after,.dashboard-premium-shine,.splash-logo-glow,[class*="shine"],[class*="glow"]{display:none!important;content:none!important;}
+.logo-premium-animated,.assistencia-logo-premium,img{box-shadow:none!important;filter:none!important;}
+
+/* Base visual do exemplo: cards pretos/transparentes com borda dourada */
+.aa-card,
+.os-card,
+.wallet-card,
+.wallet-personal,
+.wallet-workshop,
+.profit-card,
+.metric-highlight,
+.breakdown-item,
+.card-missoes,
+.card-faturamento,
+.card-pagas,
+.card-pendentes,
+.card-lucro,
+.card-custos,
+.modal-content,
+.area-toggle-btn,
+.payment-badge,
+.status-badge,
+.period-chip,
+.tab-inactive,
+.dashboard-premium-card,
+.dashboard-premium-btn:not(.gold-gradient),
+.bank-nav-card.aa-card-button{
+  background:transparent!important;
+  background-image:none!important;
+  border:1.5px solid var(--aa-border)!important;
+  color:var(--aa-gold)!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+
+/* Remove fundos coloridos internos de cards, incluindo bolhas do Bank */
+.aa-card-overlay{display:none!important;}
+.wallet-card [class*="bg-"],.wallet-personal [class*="bg-"],.wallet-workshop [class*="bg-"],
+.os-card [class*="bg-"],.profit-card [class*="bg-"],.metric-highlight [class*="bg-"],.breakdown-item [class*="bg-"],
+.card-missoes [class*="bg-"],.card-faturamento [class*="bg-"],.card-pagas [class*="bg-"],.card-pendentes [class*="bg-"],.card-lucro [class*="bg-"],.card-custos [class*="bg-"]{
+  background:transparent!important;background-image:none!important;
+}
+.aa-icon-badge,
+.wallet-card .rounded-full,
+.os-card .rounded-full,
+.profit-card .rounded-full,
+.metric-highlight .rounded-full,
+.breakdown-item .rounded-full,
+.dashboard-premium-card .rounded-full,
+.dashboard-premium-btn:not(.gold-gradient) .rounded-full{
+  background:transparent!important;
+  border:1.5px solid var(--aa-border-soft)!important;
+}
+
+/* Textos principais/valores em dourado */
+.font-usarmy,
+.os-card .font-usarmy,.wallet-card .font-usarmy,.profit-card .font-usarmy,.metric-highlight .font-usarmy,.breakdown-item .font-usarmy,
+.dashboard-premium-card .font-usarmy,.dashboard-premium-btn:not(.gold-gradient) .font-usarmy,
+.card-missoes .font-usarmy,.card-faturamento .font-usarmy,.card-pagas .font-usarmy,.card-pendentes .font-usarmy,.card-lucro .font-usarmy,.card-custos .font-usarmy,
+.os-card strong,.wallet-card strong,.profit-card strong,.metric-highlight strong,
+[class*="text-[#d4af37]"]{color:var(--aa-gold)!important;}
+
+/* Subtítulos e textos descritivos cinza */
+.text-gray-300,.text-gray-400,.text-gray-500,.text-gray-600,.text-gray-700,
+.font-mono,label,small,.results-count,
+.os-card p:not(.font-usarmy),.wallet-card p:not(.font-usarmy),.profit-card p:not(.font-usarmy),.metric-highlight p:not(.font-usarmy),.breakdown-item p:not(.font-usarmy),
+.dashboard-premium-label,.dashboard-premium-btn:not(.gold-gradient) p:not(.font-usarmy),.dashboard-premium-card p:not(.font-usarmy){color:var(--aa-muted)!important;}
+
+/* Ícones de cards/navegação no padrão dourado */
+.os-card svg,.wallet-card svg,.profit-card svg,.metric-highlight svg,.breakdown-item svg,
+.dashboard-premium-card svg,.dashboard-premium-btn:not(.gold-gradient) svg,
+.card-missoes svg,.card-faturamento svg,.card-pagas svg,.card-pendentes svg,.card-lucro svg,.card-custos svg,
+.bank-nav-card.aa-card-button svg,footer svg,nav svg{
+  color:var(--aa-gold)!important;stroke:var(--aa-gold)!important;fill:none!important;
+}
+
+/* Botões de ação do exemplo: dourado sólido com texto/ícone preto */
+.gold-gradient,
+.tab-active,
+.install-prompt,
+button[class*="gold-gradient"],
+button.bg-yellow-500,button.bg-yellow-400,
+input[type="button"],input[type="submit"],input[type="reset"]{
+  background:var(--aa-gold)!important;
+  background-image:none!important;
+  color:#000!important;
+  border:1.5px solid var(--aa-gold)!important;
+  box-shadow:none!important;
+}
+.gold-gradient *,.gold-gradient svg,.tab-active *,.tab-active svg,.install-prompt *,.install-prompt svg,
+button[class*="gold-gradient"] *,button[class*="gold-gradient"] svg{
+  color:#000!important;stroke:#000!important;fill:none!important;
+}
+.gold-gradient:hover,.gold-gradient:active,.gold-gradient:focus,.tab-active:hover,.tab-active:active,.tab-active:focus{background:var(--aa-gold)!important;color:#000!important;}
+
+/* Botões comuns dentro de grids/cards: contorno dourado, não preenchidos */
+.aa-card-button,
+button.bg-white\/5,
+button.border-white\/10,
+.tab-inactive,
+.period-chip:not(.tab-active){
+  background:transparent!important;
+  background-image:none!important;
+  color:var(--aa-gold)!important;
+  border:1.5px solid var(--aa-border)!important;
+}
+.aa-card-button *,.aa-card-button svg,button.bg-white\/5 svg,button.border-white\/10 svg,.tab-inactive svg{color:var(--aa-gold)!important;stroke:var(--aa-gold)!important;}
+
+/* Bank especificamente: remove roxo/marrom dos cards de saldo */
+.wallet-personal,.wallet-workshop,.wallet-card{
+  background:transparent!important;background-image:none!important;border-color:var(--aa-border)!important;color:var(--aa-gold)!important;
+}
+.wallet-personal *, .wallet-workshop *, .wallet-card *{color:var(--aa-gold)!important;}
+.wallet-personal .font-mono,.wallet-workshop .font-mono,.wallet-card .font-mono,
+.wallet-personal p:not(.font-usarmy),.wallet-workshop p:not(.font-usarmy),.wallet-card p:not(.font-usarmy){color:var(--aa-muted)!important;}
+.wallet-card .text-green-400,.wallet-personal .text-green-400,.wallet-workshop .text-green-400{color:var(--aa-green)!important;}
+.wallet-card .text-red-400,.wallet-personal .text-red-400,.wallet-workshop .text-red-400{color:var(--aa-red)!important;}
+
+/* Extrato/relatórios/análise: sem vermelho/azul/verde nos cards, tudo padrão do app */
+.card-missoes,.card-faturamento,.card-pagas,.card-pendentes,.card-lucro,.card-custos,
+.profit-card,.metric-highlight,.breakdown-item{
+  background:transparent!important;background-image:none!important;border-color:var(--aa-border)!important;
+}
+.card-missoes *,.card-faturamento *,.card-pagas *,.card-pendentes *,.card-lucro *,.card-custos *,
+.profit-card *,.metric-highlight *,.breakdown-item *{color:var(--aa-gold)!important;}
+.profit-card p:not(.font-usarmy),.metric-highlight p:not(.font-usarmy),.breakdown-item p:not(.font-usarmy){color:var(--aa-muted)!important;}
+
+/* Campos */
+input,textarea,select{
+  background:#080808!important;background-image:none!important;color:#e5e5e5!important;border:1.5px solid var(--aa-border-soft)!important;box-shadow:none!important;outline:none!important;
+}
+input:focus,textarea:focus,select:focus{border-color:var(--aa-gold)!important;box-shadow:none!important;}
+option{background:#050505!important;color:#e5e5e5!important;}
+
+/* Barras e gráficos simples */
+.profit-bar,.cashflow-bar,.splash-loading-bar{background:var(--aa-gold)!important;background-image:none!important;}
+.profit-bar-container{background:rgba(255,255,255,.08)!important;}
+
+/* Bordas Tailwind coloridas viram douradas dentro do padrão */
+.os-card[class*="border-"],.profit-card[class*="border-"],.wallet-card[class*="border-"],.metric-highlight[class*="border-"]{border-color:var(--aa-border)!important;}
+
+/* Rodapé e header coerentes */
+header,footer,nav{background:#050505!important;}
+header svg,footer svg,nav svg{stroke:var(--aa-gold)!important;color:var(--aa-gold)!important;}
+header button.gold-gradient svg,footer button.gold-gradient svg,nav button.gold-gradient svg{stroke:#000!important;color:#000!important;}
+
+/* Cards de alerta ficam ainda no padrão, mas texto crítico permanece legível */
+.text-red-400,.text-rose-400{color:var(--aa-red)!important;}
+.text-green-400,.text-emerald-400{color:var(--aa-green)!important;}
+
+::-webkit-scrollbar-track{background:#050505!important;}
+::-webkit-scrollbar-thumb{background:var(--aa-gold)!important;border-radius:3px!important;}
+</style>
 
 </head>
 
@@ -1279,7 +1359,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
             <div className="modal-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Confirmação">
                 <div className="modal-content p-6" onClick={e => e.stopPropagation()}>
                     <div className="flex flex-col items-center text-center gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-full border border-yellow-500/30 flex items-center justify-center overflow-visible">
+                        <div className="w-16 h-16 rounded-full border border-yellow-500/30 flex items-center justify-center overflow-hidden">
                             <img src={LOGO_URL} className="w-full h-full object-cover logo-premium-animated" />
                         </div>
                         <div>
@@ -4534,7 +4614,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
             // ── RENDER ─────────────────────────────────────────────────────────
             return (
-                <div className="bank-render-safe pb-6">
+                <div className="animate-fadeIn pb-6">
                     {/* ── Header ── */}
                     <div className="flex items-center justify-between mb-4">
                         <button onClick={onBack} className="btn-icon text-gray-400" aria-label="Voltar">
@@ -4587,15 +4667,15 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                     {/* ── Wallet Cards ── */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         {/* Personal wallet */}
-                        <div className="rounded-2xl p-4 relative overflow-visible" style={{background:'#1a1a1a',border:'1px solid rgba(99,102,241,0.3)'}}>
-                            
+                        <div className="aa-card wallet-card wallet-personal rounded-2xl p-4 relative overflow-hidden">
+                            <div className="aa-card-overlay absolute top-0 right-0 w-20 h-20 rounded-full opacity-10"></div>
                             <div className="flex items-center gap-2 mb-3">
-                                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(99,102,241,0.2)'}}>
+                                <div className="aa-icon-badge w-7 h-7 rounded-full flex items-center justify-center">
                                     <BankUiIcon name="user" size={14} color="#6366f1" />
                                 </div>
-                                <span className="text-[9px] font-usarmy" style={{color:'#818cf8'}}>PESSOAL</span>
+                                <span className="text-[9px] font-usarmy">PESSOAL</span>
                             </div>
-                            <p className="font-usarmy text-base mb-1" style={{color: totalSummary.pBalance>=0?'#a5b4fc':'#f87171'}}>
+                            <p className="font-usarmy text-base mb-1">
                                 {money(totalSummary.pBalance)}
                             </p>
                             <div className="flex justify-between text-[8px] font-mono text-gray-500">
@@ -4604,15 +4684,15 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             </div>
                         </div>
                         {/* Workshop wallet */}
-                        <div className="rounded-2xl p-4 relative overflow-visible" style={{background:'#1a1a1a',border:'1px solid rgba(212,175,55,0.3)'}}>
-                            
+                        <div className="aa-card wallet-card wallet-workshop rounded-2xl p-4 relative overflow-hidden">
+                            <div className="aa-card-overlay absolute top-0 right-0 w-20 h-20 rounded-full opacity-10"></div>
                             <div className="flex items-center gap-2 mb-3">
-                                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background:'rgba(212,175,55,0.15)'}}>
+                                <div className="aa-icon-badge w-7 h-7 rounded-full flex items-center justify-center">
                                     <BankUiIcon name="wrench" size={14} color="#d4af37" />
                                 </div>
-                                <span className="text-[9px] font-usarmy" style={{color:'#d4af37'}}>OFICINA</span>
+                                <span className="text-[9px] font-usarmy">OFICINA</span>
                             </div>
-                            <p className="font-usarmy text-base mb-1" style={{color: totalSummary.wBalance>=0?'#d4af37':'#f87171'}}>
+                            <p className="font-usarmy text-base mb-1">
                                 {money(totalSummary.wBalance)}
                             </p>
                             <div className="flex justify-between text-[8px] font-mono text-gray-500">
@@ -4634,7 +4714,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             ['relatorios','RELATÓRIO','bar-chart-2']
                         ].map(([key,label,icon])=>(
                             <button key={key} onClick={()=>setTab(key)}
-                                className={`p-2.5 rounded-xl text-[9px] font-usarmy relative ${tab===key ? 'gold-gradient' : 'bg-white/5 text-gray-400 border border-white/10'}`}>
+                                className={`bank-nav-card p-2.5 rounded-xl text-[9px] font-usarmy relative ${tab===key ? 'gold-gradient' : 'aa-card-button'}`}>
                                 {key==='fixas' && urgentCount>0 && (
                                     <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-[7px] font-bold text-white flex items-center justify-center">{urgentCount}</span>
                                 )}
@@ -4828,7 +4908,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
                     {/* ════════════════ TAB: EXTRATOS ════════════════ */}
                     {tab === 'extratos' && (
-                        <div className="space-y-4 bank-extrato-no-animation">
+                        <div className="space-y-4 animate-fadeIn">
                             <MonthNav />
 
                             {/* Filters */}
@@ -4971,7 +5051,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             </div>
                             {/* Urgent alerts */}
                             {billsAlerts.filter(b=>b.urgent||b.overdue).length > 0 && (
-                                <div className="rounded-xl overflow-visible" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
+                                <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(234,179,8,0.3)'}}>
                                     <div className="p-2 flex items-center gap-2" style={{background:'rgba(234,179,8,0.1)'}}>
                                         <BankUiIcon name="shield-alert" size={16} color="#facc15" />
                                         <span className="font-usarmy text-yellow-400 text-xs">CONTAS URGENTES</span>
@@ -5905,7 +5985,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             <p className="text-[10px] text-gray-500 -mt-1">Se preencher site, o card abre o site. Se preencher só o celular, o card abre no WhatsApp.</p>
                             <div className="grid grid-cols-2 gap-3">
                                 <button type="button" onClick={() => { setForm({ ...emptyForm }); setEditingId(null); }} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">LIMPAR</button>
-                                <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>{editingId ? 'SALVAR' : 'CADASTRAR'}</button>
+                                <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>{editingId ? 'SALVAR' : 'CADASTRAR'}</button>
                             </div>
                         </form>
                     </div>
@@ -6335,7 +6415,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                     />
                                     <div className="grid grid-cols-2 gap-3">
                                         <button type="button" onClick={() => setSearchTerm('')} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">LIMPAR BUSCA</button>
-                                        <button type="button" onClick={openCreate} className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>+ NOVA ASSISTÊNCIA</button>
+                                        <button type="button" onClick={openCreate} className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>+ NOVA ASSISTÊNCIA</button>
                                     </div>
                                 </div>
                             </div>
@@ -6491,7 +6571,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <button type="button" onClick={() => { resetForm(); setScreen('list'); }} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
-                                    <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background:'#1a1a1a' }}>
+                                    <button type="submit" className="p-3 rounded-xl text-white font-usarmy text-xs border border-[#8fb85a]/40" style={{ background: 'linear-gradient(135deg, #4e6b2f 0%, #5d7a37 50%, #6f8f42 100%)' }}>
                                         {editingId ? 'SALVAR' : 'CADASTRAR'}
                                     </button>
                                 </div>
@@ -6769,7 +6849,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                             <p className="font-usarmy text-[#d4af37] text-sm tracking-widest">{title}</p>
                             <p className="text-[9px] text-gray-500 font-mono">{subtitle}</p>
                         </div>
-                        <div className="w-11 h-11 rounded-full overflow-visible border border-[#d4af37]/30">
+                        <div className="w-11 h-11 rounded-full overflow-hidden border border-[#d4af37]/30">
                             <img src={LOGO_URL} className="w-full h-full object-cover logo-premium-animated" />
                         </div>
                     </div>
@@ -7500,7 +7580,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                         type="button"
                         onClick={() => setView('gestao_calculadora')}
                         className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                        style={{ background:'#1a1a1a', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow:'none' }}
+                        style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
                     >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-orange-400"></i>
@@ -7516,7 +7596,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                         type="button"
                         onClick={openTechCalculators}
                         className="w-full min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                        style={{ background:'#1a1a1a', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow:'none' }}
+                        style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
                     >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <i data-lucide="gauge" className="w-6 h-6 shrink-0 text-blue-400"></i>
@@ -7860,7 +7940,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                 <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center px-8">
                     <div
                         className="absolute inset-0 opacity-25"
-                        style={{background:'#1a1a1a'}}
+                        style={{backgroundImage: 'radial-gradient(circle at center, rgba(80,60,10,0.35) 0%, #050505 55%, #000 100%)'}}
                     ></div>
 
                     <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
@@ -8685,7 +8765,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                 }, 140);
                             }}
                             className="w-full mb-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                            style={{ background:'#1a1a1a', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow:'none' }}
+                            style={{ background: 'linear-gradient(145deg, #2d1a0d 0%, #20150a 100%)', borderColor: 'rgba(249, 115, 22, 0.35)', boxShadow: '0 0 12px rgba(212,175,55,0.12)' }}
                         >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <i data-lucide="plus-circle" className="w-6 h-6 shrink-0 text-orange-400"></i>
@@ -8725,7 +8805,7 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                 }
                             }}
                             className="w-full mt-3 min-h-[78px] px-5 py-4 rounded-xl border text-center flex items-center justify-between gap-3 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
-                            style={{ background:'#1a1a1a', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow:'none' }}
+                            style={{ background: 'linear-gradient(145deg, #0d1a2d 0%, #0a1520 100%)', borderColor: 'rgba(59, 130, 246, 0.35)', boxShadow: '0 0 12px rgba(59,130,246,0.10)' }}
                         >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <i data-lucide="calculator" className="w-6 h-6 shrink-0 text-blue-400"></i>
@@ -8770,12 +8850,12 @@ input.tech-calculator-input::-webkit-inner-spin-button{
                                     <div className="w-full mt-2">
                                     <button
                                         onClick={() => setView('alcantara_bank')}
-                                        className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-visible border border-[#f5d36a]/50 mt-0"
-                                        style={{ boxShadow:'none' }}
+                                        className="w-full gold-gradient p-4 rounded-xl font-usarmy text-xs shadow-2xl relative overflow-hidden border border-[#f5d36a]/50 mt-0"
+                                        style={{ boxShadow: '0 0 12px rgba(212,175,55,0.35), 0 0 28px rgba(212,175,55,0.18)' }}
                                     >
                                         <span
                                             className="absolute inset-y-0 left-[-35%] w-[32%] pointer-events-none animate-[shineSweep_2s_linear_infinite]"
-                                            style={{ background:'#1a1a1a', transform:'none' }}
+                                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,248,210,0.22) 50%, rgba(255,255,255,0) 100%)', transform: 'skewX(-20deg)' }}
                                         ></span>
                                         <span className="relative z-10 flex items-center justify-center gap-2">
                                             <i data-lucide="landmark" className="w-4 h-4"></i>
