@@ -770,6 +770,30 @@ header button.gold-gradient svg,footer button.gold-gradient svg,nav button.gold-
 
 ::-webkit-scrollbar-track{background:#050505!important;}
 ::-webkit-scrollbar-thumb{background:var(--aa-gold)!important;border-radius:3px!important;}
+
+/* Ajuste pontual solicitado: cards da Análise de Lucratividade no padrão do app */
+.aa-lucro-pattern-card{
+  background:transparent!important;
+  background-image:none!important;
+  border:1.5px solid var(--aa-border)!important;
+  color:var(--aa-gold)!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+.aa-lucro-pattern-card svg{
+  color:var(--aa-gold)!important;
+  stroke:var(--aa-gold)!important;
+  fill:none!important;
+}
+.aa-lucro-pattern-card .font-usarmy,
+.aa-lucro-pattern-card .font-mono,
+.aa-lucro-pattern-card p.text-white,
+.aa-lucro-pattern-card p.text-lg{
+  color:var(--aa-gold)!important;
+}
+.aa-lucro-pattern-card p:not(.font-usarmy):not(.text-lg){
+  color:var(--aa-muted)!important;
+}
 </style>
 
 </head>
@@ -8233,13 +8257,24 @@ header button.gold-gradient svg,footer button.gold-gradient svg,nav button.gold-
             ];
 
             const MetricCard = ({ title, value, subtitle, icon, tone = 'gold' }) => {
-                const toneClass = {
+                const lucroPatternCards = [
+                    'LUCRO LÍQUIDO',
+                    'FATURAMENTO',
+                    'TICKET MÉDIO',
+                    'CUSTOS REAIS',
+                    'SERVIÇOS',
+                    'PEÇAS',
+                    'PRODUTOS',
+                    'DESCONTOS'
+                ];
+                const useLucroPattern = lucroPatternCards.includes(title);
+                const toneClass = useLucroPattern ? 'aa-lucro-pattern-card' : ({
                     gold: 'text-[#d4af37] border-[#d4af37]/20 bg-[#d4af37]/10',
                     green: 'text-green-400 border-green-500/20 bg-green-500/10',
                     red: 'text-red-400 border-red-500/20 bg-red-500/10',
                     blue: 'text-blue-400 border-blue-500/20 bg-blue-500/10',
                     yellow: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10'
-                }[tone] || 'text-[#d4af37] border-[#d4af37]/20 bg-[#d4af37]/10';
+                }[tone] || 'text-[#d4af37] border-[#d4af37]/20 bg-[#d4af37]/10');
 
                 return (
                     <div className={`p-4 rounded-xl border ${toneClass}`}>
