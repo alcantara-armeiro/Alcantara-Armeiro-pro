@@ -794,6 +794,114 @@ header button.gold-gradient svg,footer button.gold-gradient svg,nav button.gold-
 .aa-lucro-pattern-card p:not(.font-usarmy):not(.text-lg){
   color:var(--aa-muted)!important;
 }
+
+/* ===== AJUSTE FINAL SEM NEON/PREENCHIMENTO ===== */
+
+button:has([data-lucide="message-circle"]),
+button:has(.lucide-message-circle),
+button:has([data-lucide="calculator"]),
+button:has([data-lucide="plus"]),
+button:has([data-lucide="clipboard-plus"]){
+    background: transparent !important;
+    background-image:none !important;
+    box-shadow:none !important;
+    filter:none !important;
+}
+
+/* Avisar pronto */
+button:has([data-lucide="message-circle"]),
+button:has(.lucide-message-circle){
+    border:1.5px solid rgba(34,197,94,.45) !important;
+}
+
+/* Nova ordem e calculadoras */
+button:has([data-lucide="calculator"]),
+button:has([data-lucide="plus"]),
+button:has([data-lucide="clipboard-plus"]){
+    border:1.5px solid rgba(212,175,55,.55) !important;
+}
+
+/* Remove qualquer preenchimento interno */
+button *,
+.dashboard-premium-btn *,
+.aa-card-button *{
+    background:none !important;
+    box-shadow:none !important;
+    filter:none !important;
+}
+
+
+/* ===== REMOVER BORDA STATUS OS ===== */
+
+.status-badge,
+[class*="status-badge"],
+[class*="AGUARDANDO"],
+[class*="aprovacao"],
+[class*="aprov"]{
+    border:none !important;
+    outline:none !important;
+    box-shadow:none !important;
+    background:transparent !important;
+}
+
+/* força remoção em cards */
+.os-card .status-badge,
+.os-card [class*="status"]{
+    border:none !important;
+    outline:none !important;
+    box-shadow:none !important;
+}
+
+
+/* ===== NOVA ORDEM TRANSPARENTE ===== */
+
+button:has([data-lucide="clipboard-plus"]),
+button:has([data-lucide="plus-circle"]),
+button:has([data-lucide="plus"]){
+    background: transparent !important;
+    background-image:none !important;
+    border:1.5px solid rgba(212,175,55,.65) !important;
+    box-shadow:none !important;
+    filter:none !important;
+}
+
+button:has([data-lucide="clipboard-plus"]) *,
+button:has([data-lucide="plus-circle"]) *,
+button:has([data-lucide="plus"]) *{
+    background:none !important;
+    box-shadow:none !important;
+}
+
+
+/* ===== CALCULADORA TECH PADRÃO DOURADO ===== */
+
+button:has([data-lucide="gauge"]),
+button:has([data-lucide="cpu"]),
+button:has([data-lucide="wrench"]),
+button:has([data-lucide="calculator"]) {
+    background: transparent !important;
+    background-image: none !important;
+    border: 1.5px solid rgba(212,175,55,.65) !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+/* remove azul interno */
+[class*="tech"]{
+    background: transparent !important;
+    background-image:none !important;
+    box-shadow:none !important;
+}
+
+/* textos e ícones dourados */
+button:has([data-lucide="gauge"]) *,
+button:has([data-lucide="cpu"]) *,
+button:has([data-lucide="wrench"]) *,
+button:has([data-lucide="calculator"]) *{
+    color:#d4af37 !important;
+    stroke:#d4af37 !important;
+}
+
 </style>
 
 </head>
