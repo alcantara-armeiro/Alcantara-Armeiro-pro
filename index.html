@@ -5111,7 +5111,7 @@ button:has([data-lucide="calculator"]) *{
                                     className="w-full p-3 rounded-xl mb-4 text-sm" />
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={saveTransaction} className="gold-gradient p-4 rounded-xl font-usarmy text-xs">
+                                    <button onClick={saveTransaction} className="p-4 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">
                                         {editingId ? 'ATUALIZAR' : 'SALVAR LANÇAMENTO'}
                                     </button>
                                     <button onClick={()=>{ setEditingId(null); setForm({...emptyForm,date:form.date}); }}
@@ -5934,7 +5934,7 @@ button:has([data-lucide="calculator"]) *{
                                 <p className="font-usarmy text-[#d4af37] text-xs mb-3">ATALHOS</p>
                                 <div className="grid grid-cols-1 gap-2">
                                     <button onClick={generateFinancialReportPDF}
-                                        className="gold-gradient p-3 rounded-xl font-usarmy text-xs flex items-center gap-2 justify-center">
+                                        className="p-3 rounded-xl border border-white/10 text-gray-300 font-usarmy text-xs flex items-center gap-2 justify-center">
                                         <BankUiIcon name="file-down" size={16} color="#d4af37" /> GERAR PDF DO RELATÓRIO
                                     </button>
                                     <button onClick={()=>setTab('lancamentos')}
@@ -9903,7 +9903,7 @@ button:has([data-lucide="calculator"]) *{
                             <button 
                                 onClick={handleExportFullBackup} 
                                 disabled={actionBusy}
-                                className="w-full gold-gradient p-5 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3 disabled:opacity-50"
+                                className="w-full os-card p-5 rounded-xl font-usarmy text-sm flex items-center justify-center gap-3 disabled:opacity-50"
                             >
                                 {backupBusy ? <div className="loading-spinner"></div> : <i data-lucide="download" className="w-5 h-5"></i>}
                                 BAIXAR BACKUP TOTAL
