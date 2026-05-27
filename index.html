@@ -5335,7 +5335,7 @@ button:has([data-lucide="calculator"]) *{
                                         </select>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={saveBill} className="gold-gradient p-3 rounded-xl font-usarmy text-xs">{editingBillId?'ATUALIZAR':'SALVAR'}</button>
+                                        <button onClick={saveBill} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">{editingBillId?'ATUALIZAR':'SALVAR'}</button>
                                         <button onClick={()=>{ setEditingBillId(null); setBillForm({name:'',value:'',date:isoToday(),area:'oficina',active:true}); setShowBillForm(false); }}
                                             className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
                                     </div>
@@ -5524,7 +5524,7 @@ button:has([data-lucide="calculator"]) *{
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <button onClick={saveCard} className="gold-gradient p-3 rounded-xl font-usarmy text-xs">{editingCardId?'ATUALIZAR':'SALVAR'}</button>
+                                                <button onClick={saveCard} className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">{editingCardId?'ATUALIZAR':'SALVAR'}</button>
                                                 <button onClick={()=>{ setEditingCardId(null); setCardForm(emptyCardForm); setShowCardForm(false); }}
                                                     className="p-3 rounded-xl border border-white/10 text-gray-400 font-usarmy text-xs">CANCELAR</button>
                                             </div>
