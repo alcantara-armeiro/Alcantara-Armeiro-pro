@@ -1,5 +1,5 @@
-const CACHE_NAME = 'alcantara-offline-v20-nav-black';
-const RUNTIME_CACHE = 'alcantara-runtime-v20-nav-black';
+const CACHE_NAME = 'alcantara-offline-v3-nav-black';
+const RUNTIME_CACHE = 'alcantara-runtime-v3-nav-black';
 
 const CORE_ASSETS = [
   './',
